@@ -1,7 +1,8 @@
 from botorch.acquisition import MCAcquisitionFunction
 from botorch.acquisition.objective import MCAcquisitionObjective
 from botorch.models.model import Model
-from botorch.sampling.samplers import MCSampler
+from botorch.sampling.normal import IIDNormalSampler 
+#import botorch.sampling.samplers import MCSampler
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
 from torch import Tensor
 from typing import Optional
@@ -13,7 +14,7 @@ class PosteriorMean(MCAcquisitionFunction):
     def __init__(
         self,
         model: Model,
-        sampler: Optional[MCSampler] = None,
+        sampler: Optional[IIDNormalSampler] = None,
         objective: Optional[MCAcquisitionObjective] = None,
         X_pending: Optional[Tensor] = None,
     ) -> None:

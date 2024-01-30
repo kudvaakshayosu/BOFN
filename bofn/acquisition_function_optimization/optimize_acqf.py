@@ -26,13 +26,15 @@ def optimize_acqf_and_get_suggested_point(
         if isinstance(acq_func, qKnowledgeGradient)
         else gen_batch_initial_conditions
     )
+    
+    # Creating problems here test for solution
     batch_initial_conditions = ic_gen(
         acq_function=acq_func,
         bounds=bounds,
         q=batch_size,
         num_restarts=num_restarts,
         raw_samples=raw_samples,
-        options={"batch_limit": num_restarts},
+        #options={"batch_limit": num_restarts},
     )
 
     if posterior_mean is not None:

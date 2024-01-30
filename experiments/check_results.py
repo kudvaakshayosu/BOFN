@@ -7,7 +7,7 @@ problem = "covid_calibration"
 if problem == "covid_calibration":
     n_evals = 50
     n_trials = 30
-    algos = ["KG", "EICF", "EIFN"]
+    algos = "EIFN" #["KG", "EICF", "EIFN"]
 
 #
 script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))

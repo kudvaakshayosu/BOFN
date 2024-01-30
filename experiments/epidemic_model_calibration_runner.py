@@ -72,12 +72,14 @@ algo = "EIFN"
 
 n_bo_iter = 50
 
-if len(sys.argv) == 3:
-    first_trial = int(sys.argv[1])
-    last_trial =  int(sys.argv[2])
-elif len(sys.argv) == 2:
-    first_trial = int(sys.argv[1])
-    last_trial =  int(sys.argv[1])
+# if len(sys.argv) == 3:
+#     first_trial = int(sys.argv[1])
+#     last_trial =  int(sys.argv[2])
+# elif len(sys.argv) == 2:
+#     first_trial = int(sys.argv[1])
+#     last_trial =  int(sys.argv[1])
+first_trial = 0
+last_trial = 0
 
 experiment_manager(
     problem=problem,

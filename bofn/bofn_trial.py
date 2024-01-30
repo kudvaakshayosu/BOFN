@@ -5,11 +5,12 @@ import time
 import torch
 from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qKnowledgeGradient
 from botorch.acquisition import PosteriorMean as GPPosteriorMean
-from botorch.sampling.samplers import SobolQMCNormalSampler
+from botorch.sampling.normal import SobolQMCNormalSampler
 from torch import Tensor
 from typing import Callable, List, Optional
 
 from bofn.acquisition_function_optimization.optimize_acqf import optimize_acqf_and_get_suggested_point
+from bofn.acquisition_function_optimization.custom_acqf_optimizer import custom_optimize_acqf
 from bofn.utils.dag import DAG
 from bofn.utils.initial_design import generate_initial_design
 from bofn.utils.fit_gp_model import fit_gp_model
@@ -158,7 +159,8 @@ def get_new_suggested_point(
         model = GaussianProcessNetwork(train_X=X, train_Y=network_output_at_X, dag=dag,
                           active_input_indices=active_input_indices)
         # Sampler
-        qmc_sampler = SobolQMCNormalSampler(num_samples=128)
+        #qmc_sampler = SobolQMCNormalSampler(num_samples=128)
+        qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
         # Acquisition function
         acquisition_function = qExpectedImprovement(
             model=model,
@@ -174,7 +176,8 @@ def get_new_suggested_point(
         )
     elif algo == "EICF":
         model = fit_gp_model(X=X, Y=network_output_at_X)
-        qmc_sampler = SobolQMCNormalSampler(num_samples=128)
+        #qmc_sampler = SobolQMCNormalSampler(num_samples=128)
+        qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
         acquisition_function = qExpectedImprovement(
             model=model,
             best_f=objective_at_X.max().item(),
@@ -205,5 +208,6 @@ def get_new_suggested_point(
         batch_size=1,
         posterior_mean=posterior_mean_function,
     )
+    
 
     return new_x
