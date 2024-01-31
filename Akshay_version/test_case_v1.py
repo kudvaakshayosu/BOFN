@@ -13,8 +13,12 @@ from torch import Tensor
 from gp_network_utils import GaussianProcessNetwork
 
 from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.optim import optimize_acqf
+from botorch.acquisition.knowledge_gradient import qKnowledgeGradient
 
 from acquisition_functions import PosteriorMean
+
+torch.set_default_dtype(torch.double)
 
 f1 = lambda x: -2*x**2 + 12.2*x**5 - 21.2*x**4 - 6.2*x + 6.4*x**3 + 4.7*x**2
 f2 = lambda x: -x**6 + 11*x**5 -43.3*x**4 + 10*x + 74.8*x**3 - 56.9*x**2
@@ -73,7 +77,7 @@ active_input_indices = [[0],[1],[0,1]]
 
 
 # Start the modeling procedure
-Ninit = 5
+Ninit = 30
 n_outs = g.n_nodes
 
 
@@ -89,16 +93,26 @@ for i in range(Ninit):
 model = GaussianProcessNetwork(train_X=x_init, train_Y=y_init, dag=g,
                   active_input_indices=active_input_indices)
 
-qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
 
-posterior_mean_function = PosteriorMean(
-    model=model,
-    sampler=qmc_sampler,
-    objective=network_to_objective_transform,
-)
+test_val = torch.rand(2,2)
+
+post = model.posterior(x_init)
+
+mean_test = post.mean
+variance_test = post.variance
 
 
-# test_val = torch.rand(2,3)
+
+# qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
+
+# posterior_mean_function = PosteriorMean(
+#     model=model,
+#     sampler=qmc_sampler,
+#     objective=network_to_objective_transform,
+# )
+
+
+# 
 
 # test_sample = model.posterior(test_val)
 

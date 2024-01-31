@@ -149,6 +149,7 @@ class MultivariateNormalNetwork(Posterior):
         self.normalization_constant_lower = normalization_constant_lower
         self.normalization_constant_upper = normalization_constant_upper
         #self.posterior_transform = None
+        self.mean, self.variance =  self.get_mean_var()
         
     @property
     def device(self) -> torch.device:
@@ -221,7 +222,7 @@ class MultivariateNormalNetwork(Posterior):
         #print('Taking this sample took: ' + str(t1 - t0))
         return nodes_samples
     
-    def mean(self):
+    def get_mean_var(self):
         """
         For analytic acuisition function
         
@@ -231,11 +232,14 @@ class MultivariateNormalNetwork(Posterior):
             DESCRIPTION.
 
         """
-        base_samples = None
         sample_shape = self.X.size()
         
-        nodes_samples = torch.empty(sample_shape + self.event_shape)
+        # One each for mean and variance
+        nodes_samples = torch.empty(self.event_shape)
+        nodes_samples_var = torch.empty(self.event_shape)
         nodes_samples = nodes_samples.double()
+        nodes_samples_var = nodes_samples.double()
+        
         nodes_samples_available = [False for k in range(self.n_nodes)]
         for k in self.root_nodes:
             #t0 =  time.time()
@@ -244,10 +248,8 @@ class MultivariateNormalNetwork(Posterior):
             else:
                 X_node_k = self.X
             multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k)
-            if base_samples is not None:
-                nodes_samples[..., k] = multivariate_normal_at_node_k.rsample(sample_shape, base_samples=base_samples[..., [k]])[..., 0]
-            else:
-                nodes_samples[..., k] = multivariate_normal_at_node_k.rsample(sample_shape)[..., 0]
+            nodes_samples[..., k] = multivariate_normal_at_node_k.mean.squeeze(1)
+            nodes_samples_var[..., k] = multivariate_normal_at_node_k.variance.squeeze(1)
             nodes_samples_available[k] = True
             #t1 = time.time()
             #print('Part A of the code took: ' + str(t1 - t0))
@@ -261,31 +263,21 @@ class MultivariateNormalNetwork(Posterior):
                     for j in range(len(parent_nodes)):
                         parent_nodes_samples_normalized[..., j] = (parent_nodes_samples_normalized[..., j] - self.normalization_constant_lower[k][j])/(self.normalization_constant_upper[k][j] - self.normalization_constant_lower[k][j])
                     X_node_k = self.X[..., self.active_input_indices[k]]
-                    aux_shape = [sample_shape[0]] + [1] * X_node_k.ndim
-                    X_node_k = X_node_k.unsqueeze(0).repeat(*aux_shape)
-                    X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized], -1)
-                    multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k)
-                    if base_samples is not None:
-                        #print(torch.sqrt(multivariate_normal_at_node_k.variance).shape)
-                        #print(torch.flatten(base_samples[..., k]).shape)
-                        my_aux = torch.sqrt(multivariate_normal_at_node_k.variance)
-                        #print(my_aux.ndim)
-                        if my_aux.ndim == 4:
-                            nodes_samples[...,k] = (multivariate_normal_at_node_k.mean + torch.einsum('abcd,a->abcd', torch.sqrt(multivariate_normal_at_node_k.variance), torch.flatten(base_samples[..., k])))[..., 0]
-                        elif my_aux.ndim == 5:
-                            nodes_samples[...,k] = (multivariate_normal_at_node_k.mean + torch.einsum('abcde,a->abcde', torch.sqrt(multivariate_normal_at_node_k.variance), torch.flatten(base_samples[..., k])))[..., 0]
-                        else:
-                            print('error')
-                    else:
-                        nodes_samples[..., k] = multivariate_normal_at_node_k.rsample()[0, ..., 0]
+                    #aux_shape = [sample_shape[0]] + [1] * X_node_k.ndim
+                    #X_node_k = X_node_k.unsqueeze(0).repeat(*aux_shape)
+                    #X_node_k = X_node_k.repeat(*aux_shape)
+                    X_node_k = torch.hstack([X_node_k, parent_nodes_samples_normalized])
+                    multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k.type(torch.float))
+                    nodes_samples[..., k] = multivariate_normal_at_node_k.mean.squeeze(1)
+                    nodes_samples_var[..., k] = multivariate_normal_at_node_k.variance.squeeze(1)
                     nodes_samples_available[k] = True
                     #t1 = time.time()
                     #print('Part B of the code took: ' + str(t1 - t0))
         #t1 = time.time()
         #print('Taking this sample took: ' + str(t1 - t0))
-        return nodes_samples
+        return nodes_samples, nodes_samples_var
     
-    
+
     
     
     
