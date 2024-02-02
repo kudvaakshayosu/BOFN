@@ -21,43 +21,14 @@ from torch import Tensor
 from typing import Optional
 import torch
 
-class PosteriorMean(MCAcquisitionFunction):
-    r"""
-    """
-
-    def __init__(
-        self,
-        model: Model,
-        sampler: Optional[IIDNormalSampler] = None,
-        objective: Optional[MCAcquisitionObjective] = None,
-        X_pending: Optional[Tensor] = None,
-    ) -> None:
-        r"""
-        """
-        super().__init__(
-            model=model, sampler=sampler, objective=objective, X_pending=X_pending
-        )
-
-    @concatenate_pending_points
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        r"""
-        """
-        posterior = self.model.posterior(X)
-        samples = self.sampler(posterior)
-        obj = self.objective(samples)
-        obj = obj.mean(dim=0)[..., 0]
-        return obj
-
 
 
 #################### Acquisition Functions #################################   
-class ScalarizedUpperConfidenceBound(AnalyticAcquisitionFunction):
+class NetworkUCBOptimizer(AnalyticAcquisitionFunction):
     def __init__(
         self,
         model: Model,
         beta: Tensor,
-        weights: Tensor,
         maximize: bool = True,
     ) -> None:
         # we use the AcquisitionFunction constructor, since that of
@@ -65,7 +36,6 @@ class ScalarizedUpperConfidenceBound(AnalyticAcquisitionFunction):
         super(AnalyticAcquisitionFunction, self).__init__(model)
         self.maximize = maximize
         self.register_buffer("beta", torch.as_tensor(beta))
-        self.register_buffer("weights", torch.as_tensor(weights))
 
     @t_batch_mode_transform(expected_q=1)
     def forward(self, X: Tensor) -> Tensor:
@@ -80,23 +50,16 @@ class ScalarizedUpperConfidenceBound(AnalyticAcquisitionFunction):
                 design points `X`.
         """
         self.beta = self.beta.to(X)
-        batch_shape = X.shape[:-2]
         posterior = self.model.posterior(X)
-        means = posterior.mean.squeeze(dim=-2)  # b x o
-        scalarized_mean = means.matmul(self.weights)  # b
-        covs = posterior.mvn.covariance_matrix  # b x o x o
-        weights = self.weights.view(
-            1, -1, 1
-        )  # 1 x o x 1 (assume single batch dimension)
-        weights = weights.expand(batch_shape + weights.shape[1:])  # b x o x 1
-        weights_transpose = weights.permute(0, 2, 1)  # b x 1 x o
-        scalarized_variance = torch.bmm(
-            weights_transpose, torch.bmm(covs, weights)
-        ).view(
-            batch_shape
-        )  # b
-        delta = (self.beta.expand_as(scalarized_mean) * scalarized_variance).sqrt()
+        means = posterior.mean
+        sigma = posterior.variance.sqrt()
+
+        ucb = means + self.beta*sigma
+        
+        # Remove unnecessary dimensions just like analytical acq function
+        ucb_final = ucb[...,-1].squeeze(-2).squeeze(-1)
+        
         if self.maximize:
-            return scalarized_mean + delta
+            return ucb_final
         else:
-            return scalarized_mean - delta
+            return ucb_final

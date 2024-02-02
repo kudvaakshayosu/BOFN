@@ -16,11 +16,14 @@ from botorch.models.transforms import Standardize
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
 
-
+torch.set_default_dtype(torch.double)
 
 
 class GaussianProcessNetwork(Model):
-    r"""
+    """
+    This class is the exact copy of 
+    https://github.com/RaulAstudillo06/BOFN/tree/main based on 
+    "Bayesian Optimization of Function Networks", published in NeurIPS 2021.
     """
     
     def __init__(self, train_X, train_Y, dag, active_input_indices, train_Yvar=None, node_GPs=None, normalization_constant_lower=None, normalization_constant_upper=None) -> None:
@@ -48,7 +51,10 @@ class GaussianProcessNetwork(Model):
             self.node_mlls = [None for k in range(self.n_nodes)]
             self.normalization_constant_lower = [[None for j in range(len(self.dag.get_parent_nodes(k)))] for k in range(self.n_nodes)]
             self.normalization_constant_upper = [[None for j in range(len(self.dag.get_parent_nodes(k)))] for k in range(self.n_nodes)]
+            self.normalization_constant_lower_std = [[None for j in range(len(self.dag.get_parent_nodes(k)))] for k in range(self.n_nodes)]
+            self.normalization_constant_upper_std = [[None for j in range(len(self.dag.get_parent_nodes(k)))] for k in range(self.n_nodes)]
     
+            
             for k in self.root_nodes:
                 if self.active_input_indices is not None:
                     train_X_node_k = train_X[..., self.active_input_indices[k]]
@@ -56,6 +62,7 @@ class GaussianProcessNetwork(Model):
                     train_X_node_k = train_X
                 train_Y_node_k = train_Y[..., [k]]
                 self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))
+                #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6)
                 self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
                 fit_gpytorch_model(self.node_mlls[k])
                 
@@ -65,12 +72,15 @@ class GaussianProcessNetwork(Model):
                     for j in range(len(self.dag.get_parent_nodes(k))):
                         self.normalization_constant_lower[k][j] = torch.min(aux[..., j])
                         self.normalization_constant_upper[k][j] = torch.max(aux[..., j])
+                        self.normalization_constant_lower_std[k][j] = torch.min((aux[..., j] - aux[..., j].std())/aux[..., j].mean())
+                        self.normalization_constant_upper_std[k][j] = torch.max((aux[..., j] - aux[..., j].std())/aux[..., j].mean())
                         aux[..., j] = (aux[..., j] - self.normalization_constant_lower[k][j])/(self.normalization_constant_upper[k][j] - self.normalization_constant_lower[k][j])
                     train_X_node_k = torch.cat([train_X[..., self.active_input_indices[k]], aux], -1)
                     train_Y_node_k = train_Y[..., [k]]
                     aux_model =  SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))  
                     batch_shape = aux_model._aug_batch_shape
                     self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
+                    #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6)
                     self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
                     fit_gpytorch_model(self.node_mlls[k])
                 
@@ -137,6 +147,7 @@ class GaussianProcessNetwork(Model):
         
     def num_output(self):
         return self.n_outs
+
         
 class MultivariateNormalNetwork(Posterior):
     def __init__(self, node_GPs, dag, X, indices_X=None, normalization_constant_lower=None, normalization_constant_upper=None):
@@ -149,7 +160,7 @@ class MultivariateNormalNetwork(Posterior):
         self.normalization_constant_lower = normalization_constant_lower
         self.normalization_constant_upper = normalization_constant_upper
         #self.posterior_transform = None
-        self.mean, self.variance =  self.get_mean_var()
+        
         
     @property
     def device(self) -> torch.device:
@@ -168,6 +179,11 @@ class MultivariateNormalNetwork(Posterior):
         shape[-1] = self.n_nodes
         shape = torch.Size(shape)
         return shape
+    
+    @property
+    def mean_sigma(self):
+        self.mean, self.variance =  self._get_mean_var()
+        return self.mean, self.variance.sqrt()
     
     def rsample(self, sample_shape=torch.Size(), base_samples=None):
         #t0 =  time.time()
@@ -222,7 +238,7 @@ class MultivariateNormalNetwork(Posterior):
         #print('Taking this sample took: ' + str(t1 - t0))
         return nodes_samples
     
-    def get_mean_var(self):
+    def _get_mean_var(self):
         """
         For analytic acuisition function
         
@@ -233,12 +249,16 @@ class MultivariateNormalNetwork(Posterior):
 
         """
         sample_shape = self.X.size()
-        
+                
         # One each for mean and variance
-        nodes_samples = torch.empty(self.event_shape)
-        nodes_samples_var = torch.empty(self.event_shape)
+        if self.X.dim() == 2:
+            nodes_samples = torch.empty(self.event_shape).unsqueeze(1)
+            nodes_samples_var = torch.empty(self.event_shape).unsqueeze(1)
+        else:
+            nodes_samples = torch.empty(self.event_shape).unsqueeze(2)
+            nodes_samples_var = torch.empty(self.event_shape).unsqueeze(2)
         nodes_samples = nodes_samples.double()
-        nodes_samples_var = nodes_samples.double()
+        nodes_samples_var = nodes_samples_var.double()
         
         nodes_samples_available = [False for k in range(self.n_nodes)]
         for k in self.root_nodes:
@@ -248,8 +268,8 @@ class MultivariateNormalNetwork(Posterior):
             else:
                 X_node_k = self.X
             multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k)
-            nodes_samples[..., k] = multivariate_normal_at_node_k.mean.squeeze(1)
-            nodes_samples_var[..., k] = multivariate_normal_at_node_k.variance.squeeze(1)
+            nodes_samples[..., k] = multivariate_normal_at_node_k.mean
+            nodes_samples_var[..., k] = multivariate_normal_at_node_k.variance
             nodes_samples_available[k] = True
             #t1 = time.time()
             #print('Part A of the code took: ' + str(t1 - t0))
@@ -262,14 +282,16 @@ class MultivariateNormalNetwork(Posterior):
                     parent_nodes_samples_normalized = nodes_samples[..., parent_nodes].clone()
                     for j in range(len(parent_nodes)):
                         parent_nodes_samples_normalized[..., j] = (parent_nodes_samples_normalized[..., j] - self.normalization_constant_lower[k][j])/(self.normalization_constant_upper[k][j] - self.normalization_constant_lower[k][j])
-                    X_node_k = self.X[..., self.active_input_indices[k]]
-                    #aux_shape = [sample_shape[0]] + [1] * X_node_k.ndim
-                    #X_node_k = X_node_k.unsqueeze(0).repeat(*aux_shape)
-                    #X_node_k = X_node_k.repeat(*aux_shape)
-                    X_node_k = torch.hstack([X_node_k, parent_nodes_samples_normalized])
-                    multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k.type(torch.float))
-                    nodes_samples[..., k] = multivariate_normal_at_node_k.mean.squeeze(1)
-                    nodes_samples_var[..., k] = multivariate_normal_at_node_k.variance.squeeze(1)
+                        X_node_k = self.X[..., self.active_input_indices[k]]
+                        try:
+                            X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized],-1)
+                        except:
+                            X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized.squeeze(-1)],-1)
+                            
+                        multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k)
+                        nodes_samples[..., k] = multivariate_normal_at_node_k.mean
+                        nodes_samples_var[..., k] = multivariate_normal_at_node_k.variance
+                    
                     nodes_samples_available[k] = True
                     #t1 = time.time()
                     #print('Part B of the code took: ' + str(t1 - t0))

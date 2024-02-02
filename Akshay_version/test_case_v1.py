@@ -16,7 +16,7 @@ from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.optim import optimize_acqf
 from botorch.acquisition.knowledge_gradient import qKnowledgeGradient
 
-from acquisition_functions import PosteriorMean
+from acquisition_functions import NetworkUCBOptimizer
 
 torch.set_default_dtype(torch.double)
 
@@ -74,7 +74,7 @@ g = Graph(3)
 g.addEdge(0, 1)
 g.addEdge(1, 2)
 active_input_indices = [[0],[1],[0,1]]
-
+g.figure()
 
 # Start the modeling procedure
 Ninit = 30
@@ -96,11 +96,19 @@ model = GaussianProcessNetwork(train_X=x_init, train_Y=y_init, dag=g,
 
 test_val = torch.rand(2,2)
 
-post = model.posterior(x_init)
+post = model.posterior(test_val)
 
-mean_test = post.mean
-variance_test = post.variance
+mean_test, sigma_test = post.mean_sigma
 
+####
+#ucb_fun = NetworkUCBOptimizer(model, torch.tensor(2))
+
+
+
+#bounds =torch.tensor([[0,0],[1,1]])
+#bounds = bounds.type(torch.float)
+
+#new_point, acq_value = optimize_acqf( ucb_fun, bounds, q = 1, num_restarts = 100, raw_samples = 1000)
 
 
 # qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
