@@ -17,6 +17,7 @@ class Graph:
     def __init__(self, nodes):
             self.graph = defaultdict(list) # dictionary containing adjacency List
             self.n_nodes = nodes # No. of vertices
+            self.active_input_indices = []
 
 # function to add an edge to graph
     def addEdge(self, u, v):
@@ -35,12 +36,15 @@ class Graph:
         for k in range(self.n_nodes):
             if len(self.parent_nodes[k]) == 0:
                 self.root_nodes.append(k) 
+        
+        if len(self.active_input_indices) == 0:
+            print('Reminder: Please provide active input indices to the problem!')
 
 
 # The function to do Topological Sort. Inefficient for large networks
     def is_acyclic(self): 
         """       
-        Does a topological sort just copied from:
+        Does a topological sort obtained from:
         https://www.geeksforgeeks.org/topological-sorting/#
         
         Returns
@@ -127,6 +131,37 @@ class Graph:
         nx.draw_networkx(G, pos, with_labels=True, font_weight='bold', node_size=100, node_color='skyblue', font_color='black', edge_color='gray', arrowsize= 10)
         plt.show()
         G.clear()
+    
+    # Class meta data for a more streamlined data processing
+    def register_active_input_indices(self, active_input_indices: list):
+        self.active_input_indices = active_input_indices
+        print('Active input indices obtained')
+        
+    def register_uncertainty_variables(self, uncertain_input_indices: list):
+        self.uncertain_input_indices = uncertain_input_indices          
+        test_list = [i for i in range(self.n_nodes)]
+        self.design_input_indices = [i for i in test_list if i not in self.uncertain_input_indices]       
+        
+        
+    # Other properties
+    @property
+    def nw(self):
+        try:
+            nw = len(self.uncertain_input_indices)
+        except:
+            nw = 0
+        return nw
+    @property          
+    def nz(self):
+        try:
+            nz = max(map(lambda x: x, max(self.active_input_indices))) - len(self.uncertain_input_indices) + 1 # Number fo design variables
+        except:
+            nz = max(map(lambda x: x, max(self.active_input_indices))) + 1
+        return nz
+    
+    @property
+    def nx(self):
+        return self.nz + self.nw
      
     ### DAG like methods 
     def get_n_nodes(self):

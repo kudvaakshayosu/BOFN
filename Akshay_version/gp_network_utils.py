@@ -26,7 +26,7 @@ class GaussianProcessNetwork(Model):
     "Bayesian Optimization of Function Networks", published in NeurIPS 2021.
     """
     
-    def __init__(self, train_X, train_Y, dag, active_input_indices, train_Yvar=None, node_GPs=None, normalization_constant_lower=None, normalization_constant_upper=None) -> None:
+    def __init__(self, train_X, train_Y, dag, train_Yvar=None, node_GPs=None, normalization_constant_lower=None, normalization_constant_upper=None) -> None:
         r"""
         """
         self.train_X = train_X
@@ -34,7 +34,7 @@ class GaussianProcessNetwork(Model):
         self.dag = dag
         self.n_nodes = dag.get_n_nodes()
         self.root_nodes = dag.get_root_nodes()
-        self.active_input_indices = active_input_indices
+        self.active_input_indices = self.dag.active_input_indices
         self.train_Yvar = train_Yvar
         
         # Writing my own properties
@@ -98,10 +98,10 @@ class GaussianProcessNetwork(Model):
             distributions over `q` points. Includes observation noise if
             specified.
         """
-        return MultivariateNormalNetwork(self.node_GPs, self.dag, X, self.active_input_indices, self.normalization_constant_lower, self.normalization_constant_upper)
+        return MultivariateNormalNetwork(self.node_GPs, self.dag, X, self.normalization_constant_lower, self.normalization_constant_upper)
     
     def forward(self, x: Tensor) -> MultivariateNormalNetwork:
-        return MultivariateNormalNetwork(self.node_GPs, self.dag, x, self.active_input_indices,  self.normalization_constant_lower, self.normalization_constant_upper)
+        return MultivariateNormalNetwork(self.node_GPs, self.dag, x,  self.normalization_constant_lower, self.normalization_constant_upper)
     
     def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> Model:
         r"""Condition the model on new observations.
@@ -150,13 +150,13 @@ class GaussianProcessNetwork(Model):
 
         
 class MultivariateNormalNetwork(Posterior):
-    def __init__(self, node_GPs, dag, X, indices_X=None, normalization_constant_lower=None, normalization_constant_upper=None):
+    def __init__(self, node_GPs, dag, X, normalization_constant_lower=None, normalization_constant_upper=None):
         self.node_GPs = node_GPs
         self.dag = dag
         self.n_nodes = dag.get_n_nodes()
         self.root_nodes = dag.get_root_nodes()
         self.X = X
-        self.active_input_indices = indices_X
+        self.active_input_indices = self.dag.active_input_indices
         self.normalization_constant_lower = normalization_constant_lower
         self.normalization_constant_upper = normalization_constant_upper
         #self.posterior_transform = None
@@ -244,12 +244,10 @@ class MultivariateNormalNetwork(Posterior):
         
         Returns
         -------
-        nodes_samples : TYPE
-            DESCRIPTION.
+        nodes_samples : Mean
+        nodes_samples_varience : Var
 
-        """
-        sample_shape = self.X.size()
-                
+        """                
         # One each for mean and variance
         if self.X.dim() == 2:
             nodes_samples = torch.empty(self.event_shape).unsqueeze(1)
@@ -297,9 +295,74 @@ class MultivariateNormalNetwork(Posterior):
                     #print('Part B of the code took: ' + str(t1 - t0))
         #t1 = time.time()
         #print('Taking this sample took: ' + str(t1 - t0))
-        return nodes_samples, nodes_samples_var
+        return nodes_samples, nodes_samples_var # Mean and varience
     
+    # TODO : Need to modify this for both the scenarios
+    def Bonsai_UCB(self, eta: Tensor, maximize: bool, beta: Tensor = torch.tensor(2)):
+        """
+        Parameters
+        ----------
+        eta : Tensor
+            
+        beta : Tensor
+            Constant coefficient for 
+        maximize : bool
+            True for UCB
+            False for LCB            
 
+        Returns
+        -------
+        UCB: if maximize is true 
+        LCB: if maximize is false
+        """
+        
+        # One each for mean and variance
+        if self.X.dim() == 2:
+            nodes_samples = torch.empty(self.event_shape).unsqueeze(1)
+        else:
+            nodes_samples = torch.empty(self.event_shape).unsqueeze(2)
+        nodes_samples = nodes_samples.double()
+        
+        nodes_samples_available = [False for k in range(self.n_nodes)]
+        for k in self.root_nodes:
+            #t0 =  time.time()
+            if self.active_input_indices is not None:
+                X_node_k = self.X[..., self.active_input_indices[k]]
+            else:
+                X_node_k = self.X
+            multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k)
+            mean = multivariate_normal_at_node_k.mean
+            std = multivariate_normal_at_node_k.variance.sqrt()
+            nodes_samples[..., k] = (mean if maximize else -1*mean) + eta[...,k].unsqueeze(1)*beta*std
+            nodes_samples_available[k] = True
+            #t1 = time.time()
+            #print('Part A of the code took: ' + str(t1 - t0))
+  
+        while not all(nodes_samples_available):
+            for k in range(self.n_nodes): 
+                parent_nodes = self.dag.get_parent_nodes(k)
+                if not nodes_samples_available[k] and all([nodes_samples_available[j] for j in parent_nodes]):
+                    #t0 =  time.time()
+                    parent_nodes_samples_normalized = nodes_samples[..., parent_nodes].clone()
+                    for j in range(len(parent_nodes)):
+                        parent_nodes_samples_normalized[..., j] = (parent_nodes_samples_normalized[..., j] - self.normalization_constant_lower[k][j])/(self.normalization_constant_upper[k][j] - self.normalization_constant_lower[k][j])
+                        X_node_k = self.X[..., self.active_input_indices[k]]
+                        try:
+                            X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized],-1)
+                        except:
+                            X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized.squeeze(-1)],-1)
+                            
+                        multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k)
+                        mean = multivariate_normal_at_node_k.mean
+                        std = multivariate_normal_at_node_k.variance.sqrt()
+                        nodes_samples[..., k] = (mean if maximize else -1*mean) + eta[...,k].unsqueeze(1)*beta*std
+                    
+                    nodes_samples_available[k] = True
+                    #t1 = time.time()
+                    #print('Part B of the code took: ' + str(t1 - t0))
+        #t1 = time.time()
+        #print('Taking this sample took: ' + str(t1 - t0))
+        return nodes_samples 
     
     
     
