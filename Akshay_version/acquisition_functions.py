@@ -68,7 +68,8 @@ class BONSAI_Acquisition(AnalyticAcquisitionFunction):
             val = val.forward_ucb()
         else:
             if self.fixed_variable is None:
-                print('Fixed variable needs to be specified if maximize == "False"')                
+                print('Fixed variable needs to be specified if maximize == "False"')   
+                sys.exit()                
             assert X.size()[-1] == self.model.dag.nw, f"input dimension must be {self.model.dag.nz}, current input dimension X.size()[-1]"
             val = BONSAI_Confidence_Alternator(X, model=self.model, beta=self.beta, maximize=self.maximize, fixed_variable = self.fixed_variable)
             val = val.forward_lcb()
@@ -163,4 +164,83 @@ class BONSAI_Confidence_Alternator():
         
         return objective
         
+ 
+class ARBO_UCB(AnalyticAcquisitionFunction):
+    def __init__(
+        self,
+        model: Model,
+        beta: Tensor,
+        input_indices: list,
+        maximize: bool = True,        
+        fixed_variable = None
+    ) -> None:
+        # we use the AcquisitionFunction constructor, since that of
+        # AnalyticAcquisitionFunction performs some validity checks that we don't want here
+        super(AnalyticAcquisitionFunction, self).__init__(model)
+        self.maximize = maximize
+        self.register_buffer("beta", torch.as_tensor(beta))
+        self.fixed_variable = fixed_variable
+        self.design_input_indices = input_indices[0]
+        self.uncertain_input_indices = input_indices[1]
+
+        # self.n = 1
+
+    @t_batch_mode_transform(expected_q=1)
+    def forward(self, Xi: Tensor) -> Tensor:
+        """Evaluate the Upper Confidence Bound on the candidate set X using scalarization
+
+        Args:
+            X: A `(b) x d`-dim Tensor of `(b)` t-batches of `d`-dim design
+                points each.
+
+        Returns:
+            A `(b)`-dim Tensor of Upper Confidence Bound values at the given
+                design points `X`.
+        """
+        # Remove unnecessary dimensions just like analytical acq function
+        # self.n += 1
+        # print(self.n)
+        beta = self.beta.to(Xi)
+        nz = len(self.design_input_indices)
+        nw = len(self.uncertain_input_indices)
         
+        if self.maximize:
+            Nz = Xi.size()[0]
+            torch.manual_seed(10000)
+            #nz
+            Nw = 500
+            X = torch.empty(Nz*Nw, nz + nw)
+            X[..., self.design_input_indices] = Xi.squeeze(-2).repeat_interleave(Nw, dim=0)
+            X[..., self.uncertain_input_indices] = torch.rand(Nw, nw).repeat(Nz,1)           
+            
+            posterior = self.model.posterior(X)            
+            mean = posterior.mean
+            std = posterior.variance.sqrt()
+            # Upper confidence bounds
+            ucb = mean + beta*std
+            
+            ucb_mesh = torch.empty(Nz,Nw)
+            
+            for i in range(Nz):
+                ucb_mesh[i] = ucb[i*Nw:(i+1)*Nw].reshape(Nw)
+            
+            objective = smooth_amin(ucb_mesh, dim = -1)
+            
+        else:
+            if self.fixed_variable is None:
+                print('Fixed variable needs to be specified if maximize == "False"')
+                sys.exit()
+            Nw = Xi.size()[0]
+            X = torch.empty(Nw, nz + nw)
+            X[..., self.design_input_indices] = self.fixed_variable.repeat_interleave(Nw, dim=0)
+            X[..., self.uncertain_input_indices] = Xi.squeeze(-2)
+            
+            posterior = self.model.posterior(X)            
+            mean = posterior.mean
+            std = posterior.variance.sqrt()
+            
+            ucb =  - mean + beta*std          
+            
+            objective = ucb.squeeze(-2).squeeze(-1)          
+
+        return objective

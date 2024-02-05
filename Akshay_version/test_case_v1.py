@@ -12,16 +12,17 @@ import torch
 from torch import Tensor
 from gp_network_utils import GaussianProcessNetwork
 import time
-
+from botorch.models import SingleTaskGP
+from botorch.models.transforms import Standardize
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.optim import optimize_acqf
 from botorch.acquisition.knowledge_gradient import qKnowledgeGradient
 
-from acquisition_functions import BONSAI_Acquisition 
+from acquisition_functions import BONSAI_Acquisition, ARBO_UCB
 
 torch.set_default_dtype(torch.double)
 
-example_number = 1
+example_number = 2
 
 if example_number == 1:
     
@@ -71,6 +72,7 @@ if example_number == 1:
     g.addEdge(0, 1)
     g.addEdge(1, 2)
     active_input_indices = [[0],[1],[0,1]]
+    g.register_active_input_indices(active_input_indices=active_input_indices)
     g.figure()
     
 else:
@@ -119,6 +121,15 @@ else:
     uncertainty_input = [1]
     g.register_uncertainty_variables(uncertain_input_indices=uncertainty_input)
     
+    design_input = g.design_input_indices
+    
+    
+    input_index_info = [design_input, uncertainty_input]
+    
+    nz = g.nz
+    nw = g.nw
+    nx = g.nx   
+    
     #g.figure()
 
 
@@ -135,7 +146,7 @@ y_true = function_network(x_test)
 
 
 # Start the modeling procedure
-Ninit = 30
+Ninit = 2
 n_outs = g.n_nodes
 
 
@@ -148,46 +159,85 @@ for i in range(Ninit):
     y_init[i] = function_network(x_init[i])
 
 
-model = GaussianProcessNetwork(train_X=x_init, train_Y=y_init, dag=g)
 
 
-test_val = torch.rand(2,input_dim)
-
-post = model.posterior(test_val)
-mean_test, std_test = post.mean_sigma
 
 
-beta = torch.tensor(2)
 
-nz = model.dag.nz
-nw = model.dag.nw
-nx = model.dag.nx
+
+
+
 
 
 
 # Upper confidence bound
-ucb_fun = BONSAI_Acquisition(model, beta = torch.tensor(2))
+run_BONSAI = True
 
-bounds =torch.tensor([[0]*(nz),[1]*(nz)])
-bounds = bounds.type(torch.float)
-
-t1 = time.time()
-z_star, acq_value = optimize_acqf(ucb_fun, bounds, q = 1, num_restarts = 5, raw_samples = 500)
-t2 = time.time()
-print("Time taken for max_{z} min_{w} max_{eta} UCB = ", t2 - t1)
-
-# Lower confidence bound
-lcb_fun = BONSAI_Acquisition(model, beta = torch.tensor(2), maximize = False, fixed_variable = z_star)
-
-bounds =torch.tensor([[0]*(nw),[1]*(nw)])
-bounds = bounds.type(torch.float)
-
-t1 = time.time()
-w_star, acq_value = optimize_acqf(lcb_fun, bounds, q = 1, num_restarts = 5, raw_samples = 50)
-t2 = time.time()
-print("Time taken for min_{w} min_{eta} LCB = ", t2 - t1)
+if run_BONSAI:
+    
+    
+    model = GaussianProcessNetwork(train_X=x_init, train_Y=y_init, dag=g)
 
 
+    test_val = torch.rand(2,input_dim)
+
+    post = model.posterior(test_val)
+    mean_test, std_test = post.mean_sigma
 
 
+    beta = torch.tensor(2)
+
+    
+    
+    ucb_fun = BONSAI_Acquisition(model, beta = torch.tensor(2))
+    
+    bounds =torch.tensor([[0]*(nz),[1]*(nz)])
+    bounds = bounds.type(torch.float)
+    
+    t1 = time.time()
+    z_star, acq_value = optimize_acqf(ucb_fun, bounds, q = 1, num_restarts = 5, raw_samples = 50)
+    t2 = time.time()
+    print("Time taken for max_{z} min_{w} max_{eta} UCB = ", t2 - t1)
+    
+    # Lower confidence bound
+    lcb_fun = BONSAI_Acquisition(model, beta = torch.tensor(2), maximize = False, fixed_variable = z_star)
+    
+    bounds =torch.tensor([[0]*(nw),[1]*(nw)])
+    bounds = bounds.type(torch.float)
+    
+    t1 = time.time()
+    w_star, acq_value = optimize_acqf(lcb_fun, bounds, q = 1, num_restarts = 5, raw_samples = 50)
+    t2 = time.time()
+    print("Time taken for min_{w} min_{eta} LCB = ", t2 - t1)
+
+
+else:
+    model = SingleTaskGP(x_init, y_init[...,-1].unsqueeze(-1),outcome_transform=Standardize(m=1))
+    
+    ucb_fun = ARBO_UCB( model, beta = torch.tensor(2), input_indices = input_index_info)
+    
+    bounds =torch.tensor([[0]*(nz),[1]*(nz)])
+    bounds = bounds.type(torch.float)
+    
+    t1 = time.time()
+    z_star, acq_value = optimize_acqf(ucb_fun, bounds, q = 1, num_restarts = 5, raw_samples = 50)
+    t2 = time.time()
+    print("Time taken for max_{z} min_{w} UCB = ", t2 - t1)
+    
+    
+    lcb_fun = ARBO_UCB( model, beta = torch.tensor(2), input_indices = input_index_info, maximize = False, fixed_variable= z_star)
+    
+    bounds =torch.tensor([[0]*(nw),[1]*(nw)])
+    bounds = bounds.type(torch.float)
+    
+    t1 = time.time()
+    w_star, acq_value = optimize_acqf(lcb_fun, bounds, q = 1, num_restarts = 5, raw_samples = 50)
+    t2 = time.time()
+    print("Time taken for max_{z} min_{w} UCB = ", t2 - t1)
+    
+    
+    
+    
+    
+    
 
