@@ -139,7 +139,7 @@ class Graph:
         
     def register_uncertainty_variables(self, uncertain_input_indices: list):
         self.uncertain_input_indices = uncertain_input_indices          
-        test_list = [i for i in range(self.n_nodes)]
+        test_list = [i for i in range(max(max(self.active_input_indices)))]
         self.design_input_indices = [i for i in test_list if i not in self.uncertain_input_indices]       
         
         

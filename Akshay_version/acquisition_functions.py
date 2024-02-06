@@ -8,7 +8,7 @@ Created on Tue Jan 30 12:38:41 2024
 
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.acquisition.analytic import AnalyticAcquisitionFunction
-
+from torch.quasirandom import SobolEngine
 from botorch.acquisition import MCAcquisitionFunction
 from botorch.acquisition.objective import MCAcquisitionObjective
 from botorch.models.model import Model
@@ -20,6 +20,7 @@ from typing import Optional
 import torch
 import sys
 from botorch.utils.safe_math import smooth_amax, smooth_amin
+
 
 from gp_network_utils import MultivariateNormalNetwork
 
@@ -97,13 +98,13 @@ class BONSAI_Confidence_Alternator():
         self.nz = self.model.dag.nz
         self.n_nodes = self.model.dag.n_nodes
         self.beta = beta
-        self.Neta = 500
+        self.Neta = 200
         self.fixed_variable = fixed_variable
         
         if maximize: # for max min max ucb
             self.Z = F
             self.Nz = F.size()[0]
-            self.Nw = 500
+            self.Nw =200
             
             
         else: # for max max -lcb
@@ -117,10 +118,14 @@ class BONSAI_Confidence_Alternator():
         torch.manual_seed(10000)
         # Insert the testing points:
         X[..., self.model.dag.design_input_indices] = self.Z.squeeze(-2).repeat_interleave(self.Nw*self.Neta, dim=0)
-        X[..., self.model.dag.uncertain_input_indices] = torch.rand(self.Nw, self.nw).repeat(self.Nz, 1).repeat_interleave(self.Neta, dim=0)
+        soboleng_w = SobolEngine(dimension= self.nw, seed = 10000)
+        X[..., self.model.dag.uncertain_input_indices] = soboleng_w.draw(self.Nw, dtype = torch.double).repeat(self.Nz, 1).repeat_interleave(self.Neta, dim=0)
+        #X[..., self.model.dag.uncertain_input_indices] = torch.rand(self.Nw, self.nw).repeat(self.Nz, 1).repeat_interleave(self.Neta, dim=0)
         
         # Create the inter-model calibertaion term
-        eta = (torch.rand(self.Neta, self.n_nodes) * 2 - 1).repeat(self.Nw*self.Nz, 1)
+        soboleng_eta = SobolEngine(dimension= self.n_nodes, seed = 10000)
+        eta = (soboleng_eta.draw(self.Neta, dtype = torch.double) * 2 - 1).repeat(self.Nw*self.Nz, 1)
+        #eta = (torch.rand(self.Neta, self.n_nodes) * 2 - 1).repeat(self.Nw*self.Nz, 1)
         
         posterior = self.model.posterior(X)
         ucb_vals = posterior.Bonsai_UCB(
@@ -145,7 +150,9 @@ class BONSAI_Confidence_Alternator():
         X[..., self.model.dag.uncertain_input_indices] = self.W.squeeze(-2).repeat_interleave(self.Neta,dim = 0)
         
         torch.manual_seed(10000)
-        eta = (torch.rand(self.Neta, self.n_nodes) * 2 - 1).repeat(self.Nw, 1)
+        soboleng_eta = SobolEngine(dimension= self.n_nodes, seed = 10000)
+        eta = (soboleng_eta.draw(self.Neta, dtype = torch.double) * 2 - 1).repeat(self.Nw, 1)
+        #eta = (torch.rand(self.Neta, self.n_nodes) * 2 - 1).repeat(self.Nw, 1)
         
         posterior = self.model.posterior(X)
         lcb_vals = posterior.Bonsai_UCB(
@@ -208,10 +215,13 @@ class ARBO_UCB(AnalyticAcquisitionFunction):
             Nz = Xi.size()[0]
             torch.manual_seed(10000)
             #nz
-            Nw = 500
+            Nw = 200
             X = torch.empty(Nz*Nw, nz + nw)
             X[..., self.design_input_indices] = Xi.squeeze(-2).repeat_interleave(Nw, dim=0)
-            X[..., self.uncertain_input_indices] = torch.rand(Nw, nw).repeat(Nz,1)           
+            
+            soboleng_w = SobolEngine(dimension= nw, seed = 10000)
+            X[..., self.uncertain_input_indices] = soboleng_w.draw(Nw, dtype = torch.double).repeat(Nz,1)   
+            #X[..., self.uncertain_input_indices] = torch.rand(Nw, nw).repeat(Nz,1)           
             
             posterior = self.model.posterior(X)            
             mean = posterior.mean
