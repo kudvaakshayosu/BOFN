@@ -115,6 +115,60 @@ def function_network_examples(example):
         uncertainty_input = [1]
         g.register_uncertainty_variables(uncertain_input_indices=uncertainty_input)
     
+    
+    elif example == 'ARBO_example':
+        f1 = lambda x: torch.sin(x[:,0]*x[:,1])
+        f2 = lambda x: (x[:,1].sqrt())*(x[:,0])**2 + x[:,2]
+        f3 = lambda x: -1*(x[:,1] - 0.5*x[:,0])
+        
+        def function_network(X: Tensor) -> Tensor:
+            """
+            Function Network: f1 --> f2 --> f3
+            Parameters
+            ----------
+            X : X[0] is design variable -- Tensor
+                X[1] is uncertain variable -- Tensor
+        
+            Returns
+            -------
+            Tensor
+                Obtains a torch tensor
+        
+            """
+            x_min = torch.tensor([-1,2])
+            x_max = torch.tensor([2,4])
+            
+            X_scale = x_min + (x_max - x_min)*X
+            
+            #print(X_scale)
+            try:
+                f0_val = f1(X_scale)
+            except:
+                f0_val = f1(X_scale.unsqueeze(0))
+            
+            try:
+                f1_val = f2(torch.hstack([X_scale,f0_val.unsqueeze(0)])) 
+            except:
+                f1_val = f2(torch.hstack([X_scale,f0_val]).unsqueeze(0)) 
+                
+            try:
+                f2_val = f3(torch.hstack([X_scale[0], f1_val.unsqueeze(0)]))
+            except:
+                f2_val = f3(torch.hstack([X_scale[0], f1_val]).unsqueeze(0))
+            
+    
+            return torch.hstack([f0_val, f1_val, f2_val])
+        
+        g = Graph(3)
+        g.addEdge(0, 1)
+        g.addEdge(1, 2)
+        
+        active_input_indices = [[0,1],[0,1],[0]]
+        g.register_active_input_indices(active_input_indices=active_input_indices)
+        
+        uncertainty_input = [1]
+        g.register_uncertainty_variables(uncertain_input_indices=uncertainty_input)
+    
     else:
         print(' Enter a valid test function')
         
@@ -124,8 +178,8 @@ def function_network_examples(example):
     
 if __name__ == '__main__':
     
-    example_list = ['concave_two_dim', 'non_concave_two_dim']
-    example = example_list[1]
+    example_list = ['concave_two_dim', 'non_concave_two_dim', 'ARBO_example']
+    example = example_list[2]
  
     function_network, g = function_network_examples(example)
     
@@ -165,8 +219,7 @@ if __name__ == '__main__':
     
     
     
-    test_stuff = True 
-    
+    test_stuff = False
     
     
     if test_stuff:

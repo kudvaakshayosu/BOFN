@@ -98,13 +98,13 @@ class BONSAI_Confidence_Alternator():
         self.nz = self.model.dag.nz
         self.n_nodes = self.model.dag.n_nodes
         self.beta = beta
-        self.Neta = 200
+        self.Neta = 300
         self.fixed_variable = fixed_variable
         
         if maximize: # for max min max ucb
             self.Z = F
             self.Nz = F.size()[0]
-            self.Nw =200
+            self.Nw =50
             
             
         else: # for max max -lcb
@@ -115,7 +115,7 @@ class BONSAI_Confidence_Alternator():
         # Create Xe corresponds to z + w + eta
         X = torch.empty(self.Nz*self.Nw*self.Neta, self.nz + self.nw)
 
-        torch.manual_seed(10000)
+        #torch.manual_seed(10000)
         # Insert the testing points:
         X[..., self.model.dag.design_input_indices] = self.Z.squeeze(-2).repeat_interleave(self.Nw*self.Neta, dim=0)
         soboleng_w = SobolEngine(dimension= self.nw, seed = 10000)
@@ -149,7 +149,7 @@ class BONSAI_Confidence_Alternator():
         X[..., self.model.dag.design_input_indices] = self.fixed_variable.repeat_interleave(self.Nw*self.Neta, dim=0)
         X[..., self.model.dag.uncertain_input_indices] = self.W.squeeze(-2).repeat_interleave(self.Neta,dim = 0)
         
-        torch.manual_seed(10000)
+        #torch.manual_seed(10000)
         soboleng_eta = SobolEngine(dimension= self.n_nodes, seed = 10000)
         eta = (soboleng_eta.draw(self.Neta, dtype = torch.double) * 2 - 1).repeat(self.Nw, 1)
         #eta = (torch.rand(self.Neta, self.n_nodes) * 2 - 1).repeat(self.Nw, 1)
@@ -213,9 +213,9 @@ class ARBO_UCB(AnalyticAcquisitionFunction):
         
         if self.maximize:
             Nz = Xi.size()[0]
-            torch.manual_seed(10000)
+            #torch.manual_seed(10000)
             #nz
-            Nw = 200
+            Nw = 100
             X = torch.empty(Nz*Nw, nz + nw)
             X[..., self.design_input_indices] = Xi.squeeze(-2).repeat_interleave(Nw, dim=0)
             
@@ -249,7 +249,7 @@ class ARBO_UCB(AnalyticAcquisitionFunction):
             mean = posterior.mean
             std = posterior.variance.sqrt()
             
-            ucb =  - mean + beta*std          
+            ucb =  -1*mean + beta*std          
             
             objective = ucb.squeeze(-2).squeeze(-1)          
 

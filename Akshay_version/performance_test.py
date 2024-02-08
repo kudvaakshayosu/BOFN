@@ -11,12 +11,13 @@ from ObjectiveFN import function_network_examples
 from robust_algorithms import BONSAI, ARBO
 from torch.quasirandom import SobolEngine
 import matplotlib.pyplot as plt
+import pickle
 
-example_list = ['concave_two_dim', 'non_concave_two_dim']
-algorithm_list = ['BONSAI', 'ARBO']
+example_list = ['concave_two_dim', 'non_concave_two_dim', 'ARBO_example']
+algorithm_list = ['ARBO']#['BONSAI', 'ARBO']
 
 
-example = example_list[1]
+example = example_list[2]
 
 function_network, g = function_network_examples(example)
 nz = g.nz
@@ -25,12 +26,12 @@ input_dim = g.nx
 n_outs = g.n_nodes
 
 # Start the modeling procedure
-Ninit = 5
+Ninit = 10
 
 BONSAI_data = {}
 ARBO_data = {}
 
-Nrepeats = 100
+Nrepeats = 15
 
 for n in range(Nrepeats):
     j = n + 1     
@@ -51,5 +52,9 @@ for n in range(Nrepeats):
         
     if 'ARBO' in algorithm_list:
         print('Running ARBO')
-        val = ARBO(x_init, y_init, g, objective = function_network, T = 10, beta = torch.tensor(2))
+        val = ARBO(x_init, y_init, g, objective = function_network, T = 10, beta = torch.tensor(6))
         ARBO_data[n] = val
+
+
+# with open('BONSAI_ARBO_example.pickle', 'wb') as handle:
+#     pickle.dump(BONSAI_data, handle, protocol=pickle.HIGHEST_PROTOCOL)

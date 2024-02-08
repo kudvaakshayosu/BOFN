@@ -8,14 +8,24 @@ Created on Fri Feb  2 14:42:25 2024
 import torch
 import matplotlib.pyplot as plt
 
-
+####################
 #fun = lambda x: 10/(1+ torch.log(x[:,0] + x[:,1]))
 
 fun = lambda x: 100*(torch.sin(4.7/(1+ torch.log(x[:,0] + x[:,1]))) + 2*torch.cos(0.5*x[:,1]))
 
 LB = torch.tensor([4,-1])
 UB = torch.tensor([20,1])
+####################
 
+# fun = lambda x: -1*(torch.sin(x[:,0]*x[:,1]) + x[:,1].sqrt()*(x[:,0])**2 - 0.5*x[:,0])
+
+# LB = torch.tensor([-1,2])
+# UB = torch.tensor([2,4])
+
+#######################################
+    
+    
+    
 xaxis = torch.arange(LB[0], UB[0], (UB[0]-LB[0])/500)
 yaxis = torch.arange(LB[1], UB[1], (UB[1]-LB[1])/500)
 
@@ -47,7 +57,7 @@ fig, ax = plt.subplots(1, 1)
 plt.set_cmap("jet")
 contour_plot = ax.contourf(x2,y2,results2)
 fig.colorbar(contour_plot)
-plt.vlines(robust_pt, -1, 0.98, colors = 'black', linestyles = 'dashed')
+plt.vlines(robust_pt, LB[1], UB[1], colors = 'black', linestyles = 'dashed')
 plt.xlabel('z')
 plt.ylabel('w')
 

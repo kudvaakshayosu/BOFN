@@ -18,7 +18,9 @@ from botorch.models import SingleTaskGP
 from botorch.models.transforms import Standardize
 import copy
 from gpytorch.kernels import MaternKernel, ScaleKernel
- 
+from gpytorch.mlls import ExactMarginalLogLikelihood
+from botorch import fit_gpytorch_model 
+import matplotlib.pyplot as plt
 
 torch.set_default_dtype(torch.double)
 
@@ -28,7 +30,8 @@ def BONSAI(x_init: Tensor,
            g: Graph,
            objective: Callable,
            T: float,
-           beta = torch.tensor(2)) -> dict:
+           beta = torch.tensor(2)
+           ) -> dict:
     """
     Parameters
     ----------
@@ -90,7 +93,7 @@ def BONSAI(x_init: Tensor,
         # 1) max_{z} min_{w} max_{eta} UCB(z,w,eta)
         ucb_fun = BONSAI_Acquisition(model, beta = beta)        
         t1 = time.time()
-        z_star, acq_value = optimize_acqf(ucb_fun, bounds_z , q = 1, num_restarts = 5, raw_samples = 50)
+        z_star, acq_value = optimize_acqf(ucb_fun, bounds_z , q = 1, num_restarts = 10, raw_samples = 50)
         t2 = time.time()
         #print("Time taken for max_{z} min_{w} max_{eta} UCB = ", t2 - t1)
         time_opt1.append(t2 - t1)
@@ -98,7 +101,7 @@ def BONSAI(x_init: Tensor,
         #2) min_{w} min_{eta} LCB(z_star,w,eta)
         lcb_fun = BONSAI_Acquisition(model, beta = beta, maximize = False, fixed_variable = z_star)       
         t1 = time.time()
-        w_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 5, raw_samples = 50)
+        w_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 10, raw_samples = 50)
         t2 = time.time()
         #print("Time taken for min_{w} min_{eta} LCB = ", t2 - t1) 
         time_opt2.append(t2 - t1)
@@ -182,23 +185,29 @@ def ARBO(x_init: Tensor,
     
     for t in range(T):     
         print('Iteration number', t) 
-        covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=input_dim)) 
-        model = SingleTaskGP(X, Y[...,-1].unsqueeze(-1), covar_module= covar_module, outcome_transform=Standardize(m=1))
+        #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=input_dim)) 
+        model = SingleTaskGP(X, Y[...,-1].unsqueeze(-1), outcome_transform=Standardize(m=1))
         
+        
+        mlls = ExactMarginalLogLikelihood(model.likelihood, model)
+        fit_gpytorch_model(mlls)
+        
+        model.eval()
+  
         # Alternating bound acquisitions
         # 1) max_{z} min_{w} UCB(z,w)
         
-        ucb_fun = ARBO_UCB( model, beta = torch.tensor(2), input_indices = input_index_info)
+        ucb_fun = ARBO_UCB( model, beta = beta, input_indices = input_index_info)
         
         t1 = time.time()
-        z_star, acq_value = optimize_acqf(ucb_fun, bounds_z, q = 1, num_restarts = 10, raw_samples = 50)
+        z_star, acq_value = optimize_acqf(ucb_fun, bounds_z, q = 1, num_restarts = 10, raw_samples = 1000)
         t2 = time.time()
         #print("Time taken for max_{z} min_{w} UCB(z,w) = ", t2 - t1)
         time_opt1.append(t2 - t1)
         
-        lcb_fun = ARBO_UCB( model, beta = torch.tensor(2), input_indices = input_index_info, maximize = False, fixed_variable= z_star)
+        lcb_fun = ARBO_UCB( model, beta = beta, input_indices = input_index_info, maximize = False, fixed_variable= z_star)
         t1 = time.time()
-        w_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 10, raw_samples = 50)
+        w_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 10, raw_samples = 1000)
         t2 = time.time()
         #print("Time taken for  min_{w} LCB(w; z_star) = ", t2 - t1)
         time_opt2.append(t2 - t1)        
@@ -213,8 +222,33 @@ def ARBO(x_init: Tensor,
         
         # Append the new values
         X = torch.vstack([X,X_new])
-        Y = torch.vstack([Y,Y_new])
-    
+        Y = torch.vstack([Y,Y_new])      
+        
+        ##############################################################
+        # # Test to see if optimizers are looking okay - Check
+        
+        # test_z = torch.arange(0, 1, (1)/100)
+        # test_w = torch.arange(0, 1, (1)/100)
+        # # create a mesh from the axis
+        # x2, y2 = torch.meshgrid(test_z, test_w)
+
+        # # reshape x and y to match the input shape of fun
+        # xy = torch.stack([x2.flatten(), y2.flatten()], axis=1)
+        
+        
+        # posterior = model.posterior(xy)
+        # ucb = posterior.mean + posterior.variance.sqrt()
+        
+        # ucb = ucb.reshape(x2.size())
+        
+        # fig, ax = plt.subplots(1, 1)
+        # plt.set_cmap("jet")
+        # contour_plot = ax.contourf(x2,y2,ucb.detach().numpy())
+        # fig.colorbar(contour_plot)
+        # plt.xlabel('z')
+        # plt.ylabel('w')
+        
+        ########################################################################    
     output_dict = {'X': X, 'Y': Y, 'T1': time_opt1, 'T2': time_opt2}
     
     return output_dict
