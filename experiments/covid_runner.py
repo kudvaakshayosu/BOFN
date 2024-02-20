@@ -42,7 +42,7 @@ for t in range(n_periods):
     for i in range(3):
         active_input_indices.append([t])
 
-verify_dag_structure = False
+verify_dag_structure = True
 
 if verify_dag_structure:
     print(parent_nodes)

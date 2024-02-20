@@ -7,6 +7,15 @@ Created on Thu Jan 25 11:42:08 2024
 import networkx as nx
 import matplotlib.pyplot as plt
 from collections import defaultdict
+import sys
+import torch
+import collections
+import itertools
+
+# Compare the sets
+compare = lambda x, y: collections.Counter(x) != collections.Counter(y)
+# Default acquisition function: The output of final node
+default_AF = lambda Y: Y[..., -1]
 
 # Class to represent a graph
 class Graph:
@@ -18,6 +27,13 @@ class Graph:
             self.graph = defaultdict(list) # dictionary containing adjacency List
             self.n_nodes = nodes # No. of vertices
             self.active_input_indices = []
+            self.uncertain_input_indices = []
+            self.design_input_indices = []
+            
+            # Added for extra features
+            self.w_combinations = None
+            self.w_sets = None
+            self.objective_function = default_AF
 
 # function to add an edge to graph
     def addEdge(self, u, v):
@@ -128,7 +144,7 @@ class Graph:
            
         pos = nx.spring_layout(G)
            
-        nx.draw_networkx(G, pos, with_labels=True, font_weight='bold', node_size=100, node_color='skyblue', font_color='black', edge_color='gray', arrowsize= 10)
+        nx.draw_networkx(G, pos, with_labels=True, font_weight='bold', node_size=100, node_color='skyblue', font_color='black', edge_color='gray')#, arrowsize= 30)
         plt.show()
         G.clear()
     
@@ -162,7 +178,53 @@ class Graph:
     @property
     def nx(self):
         return self.nz + self.nw
-     
+    
+    # Discrete W values and objective function
+    def register_discrete_uncertain_values(self, vals, indices):
+        """
+        Parameters
+        ----------
+        vals : list of lists
+            These are the discrete values that a 
+        indices : list
+            index of uncertain variables with dicrete values
+        Returns
+        -------
+        Torch tensor
+        All combinations of the uncertain variables in tensor form
+        
+        
+        TODO: saves a dictionary which saves values corresponding to index
+
+        """
+        
+        if compare(indices,self.uncertain_input_indices) or len(self.uncertain_input_indices) == 0:
+            print('uncertain variables not defined in the problem! Please try again !!!')
+            sys.exit()
+        elif set(indices) != set(self.uncertain_input_indices):
+            print('Combination of discrete and continuous variables not supported in the current version')
+            print('Contact developer, or wait for future versions')
+            sys.exit()
+        else:
+            self.w_sets = vals
+            all_combinations = itertools.product(*vals)
+                    # Convert each combination to a Torch tensor
+            tensors = [torch.tensor(combination) for combination in all_combinations]
+            
+            # Stack the tensors to create the final result
+            self.w_combinations = torch.stack(tensors)
+            
+            # self.dict_discrete = {}
+            # j = 0
+            # for i in indices:
+            #     self.dict_discrete[i] = torch.tensor(vals[j])  
+            #     j += 1
+    
+    
+    def define_objective(self, objective):
+        self.objective_function = objective
+    
+    
     ### DAG like methods 
     def get_n_nodes(self):
         return self.n_nodes

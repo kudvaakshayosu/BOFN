@@ -8,7 +8,7 @@ Contains the GP posterior and acquisition function
 from __future__ import annotations
 import torch
 from botorch import fit_gpytorch_model
-from typing import Any
+from typing import Any, Tuple
 from botorch.models.model import Model
 from botorch.models import SingleTaskGP
 from botorch.posteriors.posterior import Posterior
@@ -91,7 +91,7 @@ class GaussianProcessNetwork(Model):
                     self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
                     fit_gpytorch_model(self.node_mlls[k])
                 
-    def posterior(self, X: Tensor, observation_noise=False) -> MultivariateNormalNetwork:
+    def posterior(self, X: Tensor, posterior_transform=None, observation_noise=False) -> MultivariateNormalNetwork:
         r"""Computes the posterior over model outputs at the provided points.
         Args:
             X: A `(batch_shape) x q x d`-dim Tensor, where `d` is the dimension
@@ -167,18 +167,22 @@ class MultivariateNormalNetwork(Posterior):
         self.normalization_constant_lower = normalization_constant_lower
         self.normalization_constant_upper = normalization_constant_upper
         #self.posterior_transform = None
-        
+    
+    @property
+    def mean_sigma(self):
+        self.mean, self.variance =  self._get_mean_var()
+        return self.mean, self.variance.sqrt()
         
     @property
     def device(self) -> torch.device:
         r"""The torch device of the posterior."""
         return "cpu"
-
+    
     @property
     def dtype(self) -> torch.dtype:
         r"""The torch dtype of the posterior."""
         return torch.double
-
+    
     @property
     def event_shape(self) -> torch.Size:
         r"""The event shape (i.e. the shape of a single sample) of the posterior."""
@@ -188,10 +192,29 @@ class MultivariateNormalNetwork(Posterior):
         return shape
     
     @property
-    def mean_sigma(self):
-        self.mean, self.variance =  self._get_mean_var()
-        return self.mean, self.variance.sqrt()
+    def base_sample_shape(self) -> torch.Size:
+        r"""The base shape of the base samples expected in `rsample`.
+   
+        Informs the sampler to produce base samples of shape
+        `sample_shape x base_sample_shape`.
+        """
+        shape = torch.Size(list([1,1,self.n_nodes]))
+        return shape
+   
+    @property
+    def batch_range(self) -> Tuple[int, int]:
+        r"""The t-batch range.
+   
+        This is used in samplers to identify the t-batch component of the
+        `base_sample_shape`. The base samples are expanded over the t-batches to
+        provide consistency in the acquisition values, i.e., to ensure that a
+        candidate produces same value regardless of its position on the t-batch.
+        """
+        return (0, -1)
     
+    def rsample_from_base_samples(self, sample_shape: torch.Size, base_samples: Tensor) -> Tensor:
+        return self.rsample(sample_shape, base_samples)
+   
     def rsample(self, sample_shape=torch.Size(), base_samples=None):
         #t0 =  time.time()
         nodes_samples = torch.empty(sample_shape + self.event_shape)
@@ -211,9 +234,9 @@ class MultivariateNormalNetwork(Posterior):
             nodes_samples_available[k] = True
             #t1 = time.time()
             #print('Part A of the code took: ' + str(t1 - t0))
-  
+   
         while not all(nodes_samples_available):
-            for k in range(self.n_nodes): 
+            for k in range(self.n_nodes):
                 parent_nodes = self.dag.get_parent_nodes(k)
                 if not nodes_samples_available[k] and all([nodes_samples_available[j] for j in parent_nodes]):
                     #t0 =  time.time()
@@ -357,7 +380,7 @@ class MultivariateNormalNetwork(Posterior):
                         try:
                             X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized],-1)
                         except:
-                            X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized.squeeze(-1)],-1)
+                            X_node_k = torch.cat([X_node_k, parent_nodes_samples_normalized.squeeze(1)],-1)
                             
                         multivariate_normal_at_node_k = self.node_GPs[k].posterior(X_node_k)
                         mean = multivariate_normal_at_node_k.mean

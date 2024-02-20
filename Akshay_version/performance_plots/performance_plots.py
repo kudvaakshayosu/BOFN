@@ -14,21 +14,34 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-with open('BONSAI_non_concave_twoD_extracted.pickle', 'rb') as handle:
-    BONSAI_data = pickle.load(handle)
-    
-    
-with open('ARBO_non_concave_twoD_extracted.pickle', 'rb') as handle:
-    ARBO_data = pickle.load(handle)
- 
-    
-data = BONSAI_data
-data2 = ARBO_data
-# For the non-concave function
-soln = torch.tensor(275.3721)
 
-plot_time = False
+example_list = ['concave_two_dim', 'non_concave_two_dim', 'ARBO_example']
+
+example = example_list[1]
+
+plot_time = True
 plot_simple_regret = True
+
+
+if example == 'non_concave_two_dim':
+
+    with open('BONSAI_non_concave_twoD_extracted.pickle', 'rb') as handle:
+        BONSAI_data = pickle.load(handle)
+        
+        
+    with open('ARBO_non_concave_twoD_extracted.pickle', 'rb') as handle:
+        ARBO_data = pickle.load(handle)
+     
+        
+    data = BONSAI_data
+    data2 = ARBO_data
+    # For the non-concave function
+    soln = torch.tensor(275.3721)
+    Ninit = 5
+    T = 10
+    
+
+
 
 if plot_time:
 
@@ -47,22 +60,24 @@ if plot_time:
     plt.title('Time per iteration - ARBO')
 
 
-tensor_data1 = data['F_min_W']
-tensor_data2 = data2['F_min_W']
+if plot_simple_regret:
 
-# Compute median, worst case (minimum), and best case (maximum) values
-median_values = (soln -tensor_data1 )[5:,:].median(dim = 1).values
-
-# Compute median, worst case (minimum), and best case (maximum) values
-median_values2 = (soln -tensor_data2 )[5:,:].median(dim = 1).values
-
-iteration_list = [i for i in range(10)]
-
-plt.plot(iteration_list, median_values, color = 'green', label = 'BONSAI')
-plt.plot(iteration_list, median_values2, color = 'red', label = 'ARBO')
-plt.xlabel('Iteration, t')
-plt.ylabel('Instantaneous robust regret over median')
-plt.legend()
+    tensor_data1 = data['F_min_W']
+    tensor_data2 = data2['F_min_W']
+    
+    # Compute median, worst case (minimum), and best case (maximum) values
+    median_values = (soln -tensor_data1 )[Ninit:,:].median(dim = 1).values
+    
+    # Compute median, worst case (minimum), and best case (maximum) values
+    median_values2 = (soln -tensor_data2 )[Ninit:,:].median(dim = 1).values
+    
+    iteration_list = [i for i in range(T)]
+    
+    plt.plot(iteration_list, median_values, color = 'green', label = 'BONSAI')
+    plt.plot(iteration_list, median_values2, color = 'red', label = 'ARBO')
+    plt.xlabel('Iteration, t')
+    plt.ylabel('Instantaneous robust regret over median')
+    plt.legend()
 
 
 
