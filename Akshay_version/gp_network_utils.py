@@ -62,13 +62,22 @@ class GaussianProcessNetwork(Model):
                 else:
                     train_X_node_k = train_X
                 train_Y_node_k = train_Y[..., [k]]
-                # Covariance module
-                #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=train_X_node_k.size()[1]))    
-                self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))
-                #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))
-                #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, outcome_transform=Standardize(m=1))
-                self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
-                fit_gpytorch_model(self.node_mlls[k])
+                
+                
+                if self.dag.custom_hyperparameters:
+                    self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * self.dag.noise_level, outcome_transform=Standardize(m=1))
+                    self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
+                    fit_gpytorch_model(self.node_mlls[k])
+                    self.node_GPs[k].covar_module.outputscale = self.dag.output_scale
+                    self.node_GPs[k].covar_module.base_kernel.lengthscale = self.dag.length_scale
+                else:
+                    # Covariance module
+                    #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=train_X_node_k.size()[1]))    
+                    self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))
+                    #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))
+                    #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, outcome_transform=Standardize(m=1))                      
+                    self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
+                    fit_gpytorch_model(self.node_mlls[k])
                 
             for k in range(self.n_nodes):
                 if self.node_GPs[k] is None:
@@ -81,15 +90,23 @@ class GaussianProcessNetwork(Model):
                         aux[..., j] = (aux[..., j] - self.normalization_constant_lower[k][j])/(self.normalization_constant_upper[k][j] - self.normalization_constant_lower[k][j])
                     train_X_node_k = torch.cat([train_X[..., self.active_input_indices[k]], aux], -1)
                     train_Y_node_k = train_Y[..., [k]]
-                    aux_model =  SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))  
+                    aux_model =  SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))  
                     batch_shape = aux_model._aug_batch_shape
-                    # Covariance Module
-                    #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=train_X_node_k.size()[1]))
-                    self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
-                    #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
-                    #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
-                    self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
-                    fit_gpytorch_model(self.node_mlls[k])
+                    
+                    if self.dag.custom_hyperparameters:
+                        self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * self.dag.noise_level, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
+                        self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
+                        fit_gpytorch_model(self.node_mlls[k])
+                        self.node_GPs[k].covar_module.outputscale = self.dag.output_scale
+                        self.node_GPs[k].covar_module.base_kernel.lengthscale = self.dag.length_scale
+                    else:                 
+                        # Covariance Module
+                        #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=train_X_node_k.size()[1]))
+                        self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
+                        #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
+                        #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
+                        self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
+                        fit_gpytorch_model(self.node_mlls[k])
                 
     def posterior(self, X: Tensor, posterior_transform=None, observation_noise=False) -> MultivariateNormalNetwork:
         r"""Computes the posterior over model outputs at the provided points.

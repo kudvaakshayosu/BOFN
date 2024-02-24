@@ -297,7 +297,7 @@ def function_network_examples(example):
 if __name__ == '__main__':
     
     example_list = ['synthetic_fun1','synthetic_fun1_discrete', 'synthetic_fun2', 'synthetic_fun3', 'covid_testing']
-    example = example_list[4]
+    example = example_list[1]
     
     function_network, g = function_network_examples(example)
     

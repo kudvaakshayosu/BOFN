@@ -11,11 +11,12 @@ import sys
 import torch
 import collections
 import itertools
-
+from botorch.acquisition.objective import GenericMCObjective
 # Compare the sets
 compare = lambda x, y: collections.Counter(x) != collections.Counter(y)
 # Default acquisition function: The output of final node
 default_AF = lambda Y: Y[..., -1]
+
 
 # Class to represent a graph
 class Graph:
@@ -33,7 +34,8 @@ class Graph:
             # Added for extra features
             self.w_combinations = None
             self.w_sets = None
-            self.objective_function = default_AF
+            self.custom_hyperparameters = False
+            self.objective_function = GenericMCObjective(default_AF)
 
 # function to add an edge to graph
     def addEdge(self, u, v):
@@ -55,6 +57,32 @@ class Graph:
         
         if len(self.active_input_indices) == 0:
             print('Reminder: Please provide active input indices to the problem!')
+
+
+
+    def has_edge(self,u,v):
+        """
+        Used to check if a child node is connected to a given parent node
+
+        Parameters
+        ----------
+        u : parent node number
+        v : child node number
+
+        Returns
+        -------
+        None.
+
+        """
+        try:
+            if v in self.graph[u]:
+                check = True
+            else:
+                check = False
+        except:
+            sys.exit(f'The parent node {u} does not exist! make sure you have defined graph properly!')
+
+        return check
 
 
 # The function to do Topological Sort. Inefficient for large networks
@@ -170,7 +198,7 @@ class Graph:
     @property          
     def nz(self):
         try:
-            nz = max(map(lambda x: x, max(self.active_input_indices))) - len(self.uncertain_input_indices) + 1 # Number fo design variables
+            nz = max(map(lambda x: x, max(self.active_input_indices))) - len(self.uncertain_input_indices) + 1 # Number of design variables
         except:
             nz = max(map(lambda x: x, max(self.active_input_indices))) + 1
         return nz
@@ -195,6 +223,7 @@ class Graph:
         
         
         TODO: saves a dictionary which saves values corresponding to index
+             for problems with a combinations of continous and discrete uncertainties
 
         """
         
@@ -222,7 +251,31 @@ class Graph:
     
     
     def define_objective(self, objective):
-        self.objective_function = objective
+        self.objective_function = GenericMCObjective(objective)
+    
+    # TODO: Accomodate for different lengthscales for different nodes: Not a critical requirement as of now
+    def set_model_hyperparameters(self, 
+                          length_scale: int = 0.5,
+                          output_scale: int = 1.0,
+                          noise_level: int = 1e-4):
+        """
+        This method is onlt set for numerical experiments with FNs with
+        Gaussian Processes. Not to be set under other circumstances
+        
+        entire FN consists of GP with same hyper-parameters is the current assumption        
+        Parameters
+        ----------
+        length_scale : int
+        output_scale : int
+        """       
+        
+        print('Warning hyperparameters have been pre-set!')
+        self.custom_hyperparameters = True
+        self.length_scale = length_scale
+        self.output_scale = output_scale
+        self.noise_level = noise_level
+    
+    
     
     
     ### DAG like methods 

@@ -17,7 +17,7 @@ from botorch.optim import optimize_acqf
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Standardize
 import copy
-from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qLogExpectedImprovement, qUpperConfidenceBound, UpperConfidenceBound
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qLogExpectedImprovement, qUpperConfidenceBound, UpperConfidenceBound, LogExpectedImprovement
 from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch import fit_gpytorch_model 
@@ -74,6 +74,7 @@ class BONS_Acquisition(AnalyticAcquisitionFunction):
         super(AnalyticAcquisitionFunction, self).__init__(model)
         self.register_buffer("beta", torch.as_tensor(beta))
         self.n_nodes = self.model.dag.n_nodes
+        self.nx = self.model.dag.nx
 
     @t_batch_mode_transform(expected_q=1)
     def forward(self, X: Tensor) -> Tensor:
@@ -93,8 +94,8 @@ class BONS_Acquisition(AnalyticAcquisitionFunction):
         self.beta = self.beta.to(X)
         
         # Seperate the objective into two
-        x = X[...,0:self.n_nodes]
-        eta = X[...,self.n_nodes:]*2 - 1
+        x = X[...,0:self.nx]
+        eta = X[...,self.nx:]*2 - 1
         
         # Obtain posterior
         posterior = self.model.posterior(x)
@@ -207,7 +208,7 @@ def BOFN(x_init: Tensor,
                     raw_samples=raw_samples,
                 )
 
-            baseline_candidate, _ = optimize_acqf(
+            x_star, _ = optimize_acqf(
                 acq_function=posterior_mean_function,
                 bounds=bounds,
                 q=q,
@@ -216,7 +217,7 @@ def BOFN(x_init: Tensor,
                 options={"batch_limit": 5},
             )
 
-            batch_initial_conditions = torch.cat([batch_initial_conditions, baseline_candidate.unsqueeze(0)], 0)
+            batch_initial_conditions = torch.cat([batch_initial_conditions, x_star.unsqueeze(0)], 0)
             num_restarts += 1 
             
             
@@ -256,7 +257,7 @@ def BOFN(x_init: Tensor,
         
         print('Next point to sample', X_new)
         
-        if input_dim == 2:
+        if input_dim == 1:
             Y_new = objective(X_new.unsqueeze(0))
         else:
             Y_new = objective(copy.deepcopy(X_new))
@@ -337,9 +338,13 @@ def BayesOpt(x_init: Tensor,
     for t in range(T):   
         
         print('Iteration number', t)   
-        model = SingleTaskGP(X, network_to_objective_transform(Y).unsqueeze(-1), outcome_transform=Standardize(m=1))       
+        model = SingleTaskGP(X, network_to_objective_transform(Y).unsqueeze(-1),train_Yvar = torch.ones(network_to_objective_transform(Y).unsqueeze(-1).shape)*1e-4, outcome_transform=Standardize(m=1))       
         mlls = ExactMarginalLogLikelihood(model.likelihood, model)
         fit_gpytorch_model(mlls)
+        
+        if g.custom_hyperparameters:           
+            model.covar_module.outputscale = g.output_scale
+            model.covar_module.base_kernel.lengthscale = g.length_scale
         
         model.eval()
         
@@ -367,6 +372,9 @@ def BayesOpt(x_init: Tensor,
                                     model=model,
                                     beta = beta)
         
+        elif acq_type == 'logEI':
+            acquisition_function = LogExpectedImprovement(model = model, best_f = network_to_objective_transform(Y).max().item())
+        
         x_star, acq_value = optimize_acqf(acq_function=acquisition_function,
                                         bounds=bounds,
                                         q=q,
@@ -389,7 +397,10 @@ def BayesOpt(x_init: Tensor,
         
         # Append the new values
         X = torch.vstack([X,X_new])
-        Y = torch.vstack([Y,Y_new.squeeze(0)])
+        try:
+            Y = torch.vstack([Y,Y_new.squeeze(0)])
+        except:
+            Y = torch.vstack([Y,Y_new.squeeze(-2).squeeze(-1)])
     
     output_dict = {'X': X, 'Y': Y, 'Time': time_opt, 'Ninit': Ninit, 'T': T}
     
@@ -484,8 +495,10 @@ def BONS(x_init: Tensor,
         
         # Append the new values
         X = torch.vstack([X,X_new])
-        Y = torch.vstack([Y,Y_new.squeeze(0)])
-    
+        try:
+            Y = torch.vstack([Y,Y_new.squeeze(0)])
+        except:
+            Y = torch.vstack([Y,Y_new.squeeze(-2).squeeze(-1)])
     output_dict = {'X': X, 'Y': Y, 'Time': time_opt, 'Ninit': Ninit, 'T': T}
     
     return output_dict
