@@ -31,11 +31,16 @@ class Graph:
             self.uncertain_input_indices = []
             self.design_input_indices = []
             
+            # Pre-define all nodes as root node
+            self.root_nodes = [i for i in range(self.n_nodes)]
+            self.parent_nodes = [[] for _ in range(self.n_nodes)]  
+            
             # Added for extra features
             self.w_combinations = None
             self.w_sets = None
             self.custom_hyperparameters = False
             self.objective_function = GenericMCObjective(default_AF)
+            self.noise_level = 1e-5
 
 # function to add an edge to graph
     def addEdge(self, u, v):
@@ -242,6 +247,8 @@ class Graph:
             
             # Stack the tensors to create the final result
             self.w_combinations = torch.stack(tensors)
+            
+            self.w_num_combinations = self.w_combinations.size()[0]
             
             # self.dict_discrete = {}
             # j = 0

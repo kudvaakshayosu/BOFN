@@ -10,6 +10,7 @@ from graph_utils import Graph
 import torch
 from torch import Tensor
 from case_studies.covid_simulator import *
+from case_studies.Polynomial_simulation import Polynomial
 from case_studies.group_testing.src.dynamic_protocol_design import simple_simulation
 import copy
 
@@ -18,53 +19,9 @@ torch.set_default_dtype(torch.double)
 
 def function_network_examples(example):
 
-    if example == 'synthetic_fun1':
-         
-        f1 = lambda x: torch.log(x[:,0] + x[:,1])
-        f2 = lambda x: 10/(1+x)
     
         
-        input_dim = 2
-        
-        
-        def function_network(X: Tensor) -> Tensor:
-            """
-            Function Network: f1 --> f2 --> f3
-            Parameters
-            ----------
-            X : X[0] is design variable -- Tensor
-                X[1] is uncertain variable -- Tensor
-        
-            Returns
-            -------
-            Tensor
-                Obtains a torch tensor
-        
-            """
-            x_min = torch.tensor([4,-1])
-            x_max = torch.tensor([20,1])
-            
-            X_scale = x_min + (x_max - x_min)*X
-            
-            #print(X_scale)
-            try:
-                f0_val = f1(X_scale)
-            except:
-                f0_val = f1(X_scale.unsqueeze(0))
-            f1_val = f2(f0_val) 
-    
-            return torch.hstack([f0_val,f1_val])
-        
-        g = Graph(2)
-        g.addEdge(0, 1)
-        
-        active_input_indices = [[0,1],[]]
-        g.register_active_input_indices(active_input_indices=active_input_indices)
-        
-        uncertainty_input = [1]
-        g.register_uncertainty_variables(uncertain_input_indices=uncertainty_input)
-        
-    elif example == 'synthetic_fun1_discrete':
+    if example == 'synthetic_fun1_discrete':
              
         f1 = lambda x: torch.log(x[:,0] + x[:,1])
         f2 = lambda x: 10/(1+x)
@@ -114,112 +71,9 @@ def function_network_examples(example):
         w1_set = [[0,0.1,0.2,0.7,1]] # Needs to be a list of list
         w_discrete_indices = [1]
         g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
-        
-        
-        
-    elif example == 'synthetic_fun2':
-        f1 = lambda x: torch.log(x[:,0] + x[:,1])
-        f2 = lambda x: 4.7/(1+x)
-        f3 = lambda x: 10*(torch.sin(x[0]) + 2*torch.cos(0.5*x[1]))
-        
-        def function_network(X: Tensor) -> Tensor:
-            """
-            Function Network: f1 --> f2 --> f3
-            Parameters
-            ----------
-            X : X[0] is design variable -- Tensor
-                X[1] is uncertain variable -- Tensor
-        
-            Returns
-            -------
-            Tensor
-                Obtains a torch tensor
-        
-            """
-            x_min = torch.tensor([4,-1])
-            x_max = torch.tensor([20,1])
-            
-            X_scale = x_min + (x_max - x_min)*X
-            
-            #print(X_scale)
-            try:
-                f0_val = f1(X_scale)
-            except:
-                f0_val = f1(X_scale.unsqueeze(0))
-            
-            f1_val = f2(f0_val) 
-            try:
-                f2_val = f3(torch.cat([f1_val,X_scale[1].unsqueeze(0)]))
-            except:
-                f2_val = f3(torch.cat([f1_val,X_scale[:,1]])).unsqueeze(0)
-            
+        nominal_w = torch.tensor([[0.7]])
     
-            return torch.hstack([f0_val, f1_val, f2_val])
-        
-        g = Graph(3)
-        g.addEdge(0, 1)
-        g.addEdge(1, 2)
-        
-        active_input_indices = [[0,1],[],[1]]
-        g.register_active_input_indices(active_input_indices=active_input_indices)
-        
-        uncertainty_input = [1]
-        g.register_uncertainty_variables(uncertain_input_indices=uncertainty_input)
-    
-    
-    elif example == 'synthetic_fun3':
-        f1 = lambda x: torch.sin(x[:,0]*x[:,1])
-        f2 = lambda x: (x[:,1].sqrt())*(x[:,0])**2 + x[:,2]
-        f3 = lambda x: -1*(x[:,1] - 0.5*x[:,0])
-        
-        def function_network(X: Tensor) -> Tensor:
-            """
-            Function Network: f1 --> f2 --> f3
-            Parameters
-            ----------
-            X : X[0] is design variable -- Tensor
-                X[1] is uncertain variable -- Tensor
-        
-            Returns
-            -------
-            Tensor
-                Obtains a torch tensor
-        
-            """
-            x_min = torch.tensor([-1,2])
-            x_max = torch.tensor([2,4])
-            
-            X_scale = x_min + (x_max - x_min)*X
-            
-            #print(X_scale)
-            try:
-                f0_val = f1(X_scale)
-            except:
-                f0_val = f1(X_scale.unsqueeze(0))
-            
-            try:
-                f1_val = f2(torch.hstack([X_scale,f0_val.unsqueeze(0)])) 
-            except:
-                f1_val = f2(torch.hstack([X_scale,f0_val]).unsqueeze(0)) 
-                
-            try:
-                f2_val = f3(torch.hstack([X_scale[0], f1_val.unsqueeze(0)]))
-            except:
-                f2_val = f3(torch.hstack([X_scale[0], f1_val]).unsqueeze(0))
-            
-    
-            return torch.hstack([f0_val, f1_val, f2_val])
-        
-        g = Graph(3)
-        g.addEdge(0, 1)
-        g.addEdge(1, 2)
-        
-        active_input_indices = [[0,1],[0,1],[0]]
-        g.register_active_input_indices(active_input_indices=active_input_indices)
-        
-        uncertainty_input = [1]
-        g.register_uncertainty_variables(uncertain_input_indices=uncertainty_input)
-        
+
     elif example == 'covid_testing':
         """
         In this example, we have two uncertain variables, namely: 
@@ -276,13 +130,73 @@ def function_network_examples(example):
         g.register_uncertainty_variables(uncertainty_input)
         
         # list of lists
-        w1_set = [[0,0.33,0.66,1],[0,0.2,0.4,0.6,0.8,1]] # Needs to be a list of list
+        w1_set = [[0,0.33,0.66,1],[0.,0.2,0.4,0.6,0.8,1.]] # Needs to be a list of list
         w_discrete_indices = uncertainty_input
         g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
         
-        g.objective_function = lambda Y: -100 * torch.sum(Y[..., [3*t + 2 for t in range(n_periods)]], dim=-1)
+        objective_function = lambda Y: -100 * torch.sum(Y[..., [3*t + 2 for t in range(n_periods)]], dim=-1)
+        
+        g.define_objective(objective_function)
+        
+        nominal_w = torch.tensor([[0.66, 0.4]])
         
         #g.figure()
+        
+    elif example == 'polynomial':
+        """
+        In this example, we have two uncertain variables, namely: 
+            1) r: radius
+            2) theta: angle
+        """
+        
+       
+        
+        simulator = Polynomial()
+        input_dim = simulator.input_dim
+        n_nodes = simulator.n_nodes
+
+        def function_network(X: Tensor) -> Tensor:   
+            
+            # Design variables
+            X[...,0] = torch.tensor(-0.5) + torch.tensor(3.75)*X[...,0]
+            X[...,1] = torch.tensor(-0.5) + torch.tensor(4.75)*X[...,1]
+            
+            # Uncertain variables scale
+            X[...,3] = X[...,3]*2*torch.pi #theta
+            X[...,2] = X[...,2]*0.5 # r
+                
+            return simulator.evaluate(X)
+        
+        
+        #############################################################
+        # Define the graph for the problem
+        g = Graph(n_nodes)    
+        
+        
+        ###########################################################
+        # Active input indices
+        active_input_indices = [[0,2,3],[1,2,3],[0,1,2,3]]
+
+        
+        ##############################################################
+        g.register_active_input_indices(active_input_indices)
+        
+        uncertainty_input = [2,3]
+        g.register_uncertainty_variables(uncertainty_input)
+        
+        # list of lists
+        w1_set = [[0,0.2,0.4,0.6,1.],[0.0000, 0.100, 0.1250, 0.2000, 0.2500, 0.300, 0.3750, 0.4500, 0.5000, 0.5700, 0.6250, 0.700, 0.7500, 0.8750, 0.9500, 1.0000]] # Needs to be a list of list
+        w_discrete_indices = uncertainty_input
+        g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
+        
+        objective_function = lambda Y: torch.sum(Y[..., [t for t in range(n_nodes)]], dim=-1)
+        
+        g.define_objective(objective_function)
+        
+        nominal_w = torch.tensor([[0.0, 0.0]])
+        
+        #g.figure()
+            
 
         
         
@@ -290,7 +204,7 @@ def function_network_examples(example):
     else:
         print(' Enter a valid test function')
         
-    return  function_network, g
+    return  function_network, g, nominal_w
 
 
     
@@ -299,7 +213,7 @@ if __name__ == '__main__':
     example_list = ['synthetic_fun1','synthetic_fun1_discrete', 'synthetic_fun2', 'synthetic_fun3', 'covid_testing']
     example = example_list[1]
     
-    function_network, g = function_network_examples(example)
+    function_network, g, _ = function_network_examples(example)
     
     test_rest = False
     

@@ -24,7 +24,57 @@ from botorch.utils.safe_math import smooth_amax, smooth_amin
 
 from gp_network_utils import MultivariateNormalNetwork
 
+torch.set_default_dtype(torch.double)
 
+############### Helper functions ##############################
+
+def active_corners(theta_min,theta_max):
+    """
+    This code is mainly used to generate all corners of box constraints.
+    Will be incorporated in the Object that will give us the bounds.
+
+    inputs:
+    theta_min -- N dimensional tensor
+    theta_max -- N dimensional tensor
+
+    output -- 2^(N) X N dimensional tensor
+    """
+    size_t1 = torch.Tensor.size(theta_min)
+    size_t2 = torch.Tensor.size(theta_max)
+
+    # Show error if dimensions dont match:
+    if size_t1 != size_t2:
+        sys.exit('The dimensions of bounds dont match: Please enter valid inputs')
+
+    val = size_t1[0]
+    size_out = 2**(val)
+    output = torch.zeros(size_out,val)
+    output_iter = torch.zeros(size_out)
+
+    for i in range(val):
+        div_size = int(size_out/(2**(i+1)))
+        divs = int(size_out/div_size)
+        div_count = 0
+        for j in range(divs):
+            if bool(j%2):
+                output_iter[div_count:div_count+div_size] = theta_min[i]*torch.ones(div_size)
+            else:
+                output_iter[div_count:div_count+div_size] = theta_max[i]*torch.ones(div_size)
+            div_count = div_count + div_size
+        output[:,i] = output_iter
+    return output
+
+def get_nodes_coeffs(n_nodes = None): # 
+
+    """
+        Generates extreme eta values for  high dimensional cases
+    """
+    
+    bound1 = torch.ones(n_nodes)
+    bound2 = -1*torch.ones(n_nodes)
+    
+    return active_corners( bound1, bound2)
+#############################################################################
 
 
 class BONSAI_Acquisition(AnalyticAcquisitionFunction):
@@ -102,8 +152,14 @@ class BONSAI_Confidence_Alternator():
         self.W_list = self.model.dag.w_combinations
         self.n_nodes = self.model.dag.n_nodes
         self.beta = beta
-        self.Neta = 300
+        
+        if self.n_nodes > 5:
+            self.Neta = 2**(self.n_nodes)
+        else:
+            self.Neta = 300
+            
         self.fixed_variable = fixed_variable
+        self.maximize = maximize
         
         if maximize: # for max min max ucb
             self.Z = F
@@ -133,13 +189,17 @@ class BONSAI_Confidence_Alternator():
         
         
         # Create the inter-model calibertaion term
-        soboleng_eta = SobolEngine(dimension= self.n_nodes, seed = 10000)
-        eta = (soboleng_eta.draw(self.Neta, dtype = torch.double) * 2 - 1).repeat(self.Nw*self.Nz, 1)
+        if self.n_nodes > 5:           
+            eta = get_nodes_coeffs(n_nodes = self.model.n_nodes).repeat(self.Nw*self.Nz, 1)             
+        else:
+            soboleng_eta = SobolEngine(dimension= self.n_nodes, seed = 10000)
+            eta = (soboleng_eta.draw(self.Neta, dtype = torch.double) * 2 - 1).repeat(self.Nw*self.Nz, 1)        
+        
         #eta = (torch.rand(self.Neta, self.n_nodes) * 2 - 1).repeat(self.Nw*self.Nz, 1)
         
         posterior = self.model.posterior(X)
         ucb_vals = posterior.Bonsai_UCB(
-            eta=eta, maximize=True, beta=self.beta)
+            eta=eta, maximize=self.maximize, beta=self.beta)
         # Assume that the final node is the output of the torch tensor
         ucb_vals = self.model.dag.objective_function(ucb_vals)
 
@@ -172,7 +232,7 @@ class BONSAI_Confidence_Alternator():
         
         posterior = self.model.posterior(X)
         lcb_vals = posterior.Bonsai_UCB(
-            eta=eta, maximize=False, beta=self.beta)
+            eta=eta, maximize=self.maximize, beta=self.beta)
         
         # Assume that the final node is the output of the torch tensor
         objective = self.model.dag.objective_function(lcb_vals)           
@@ -217,7 +277,7 @@ class BONSAI_Confidence_Alternator():
         return objective
     
 
-    
+
 
 ################################################################################
 ################ Adversarily robust bayesian optimization ######################
@@ -319,7 +379,7 @@ class ARBO_UCB(AnalyticAcquisitionFunction):
     
  
 ############################################################################
-#### ARBONS - Adversarilly robust bayesian optimization for Network Systems####
+###ARBONS - Adversarilly robust bayesian optimization for Network Systems###
 ############################################################################
  
     
@@ -549,8 +609,3 @@ class BONSAINAB_Acquisition(AnalyticAcquisitionFunction):
                 objective[i] = -1*ucb_vals[i*self.Neta:(i + 1)*self.Neta].min()       
 
         return objective
-
-
-
-    
-    

@@ -58,7 +58,7 @@ for n in range(Nrepeats):
         if algorithm_name == 'BOFN':
             for acq_fun in acq_type:
                 print('Running BOFN with ' + acq_fun)
-                val = BOFN( x_init, y_init, g, objective = function_network, T = T, acq_type = acq_fun)
+                val = BOFN(x_init, y_init, g, objective = function_network, T = T, acq_type = acq_fun)
             
                 if acq_fun == 'qEI':
                     BOFN_qEI[n] = val

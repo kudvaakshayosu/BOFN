@@ -47,7 +47,8 @@ def generate_initial_data(g: Graph,
                           function_network: Callable, 
                           seed: int = 2000,
                           Ninit: int = 10, 
-                          x_init: Tensor = None
+                          x_init: Tensor = None,
+                          get_y_vals = True
                           ):
     
     """
@@ -93,9 +94,13 @@ def generate_initial_data(g: Graph,
     else:
         x_init2 = copy.deepcopy(x_init)        
         rounded_vals = round_to_nearest_set(x_init2[...,g.uncertain_input_indices], g.w_sets)
-        x_init[...,g.uncertain_input_indices] = rounded_vals
+        x_init[...,g.uncertain_input_indices] = rounded_vals    
     
     y_init = torch.zeros(Ninit,n_outs)
+    
+    if not get_y_vals:
+        return x_init, y_init
+    
     
     for i in range(Ninit):
         y_init[i] = function_network(copy.deepcopy(x_init[i]))  

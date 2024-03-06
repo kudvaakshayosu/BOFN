@@ -37,9 +37,10 @@ class GaussianProcessNetwork(Model):
         self.root_nodes = dag.get_root_nodes()
         self.active_input_indices = self.dag.active_input_indices
         self.train_Yvar = train_Yvar
-        
+        self.noise_var = self.dag.noise_level
         # Writing my own properties
-        self.n_outs = int(self.train_Y.size()[1])
+        #self.num_outputs = 1 #int(self.train_Y.size()[1])
+        
         #######################################  
         
                         
@@ -73,9 +74,10 @@ class GaussianProcessNetwork(Model):
                 else:
                     # Covariance module
                     #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=train_X_node_k.size()[1]))    
-                    self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))
+                    #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * self.dag.noise_level, outcome_transform=Standardize(m=1))
                     #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1))
                     #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, outcome_transform=Standardize(m=1))                      
+                    self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, outcome_transform=Standardize(m=1))
                     self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
                     fit_gpytorch_model(self.node_mlls[k])
                 
@@ -90,7 +92,7 @@ class GaussianProcessNetwork(Model):
                         aux[..., j] = (aux[..., j] - self.normalization_constant_lower[k][j])/(self.normalization_constant_upper[k][j] - self.normalization_constant_lower[k][j])
                     train_X_node_k = torch.cat([train_X[..., self.active_input_indices[k]], aux], -1)
                     train_Y_node_k = train_Y[..., [k]]
-                    aux_model =  SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))  
+                    aux_model =  SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * self.dag.noise_level, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))  
                     batch_shape = aux_model._aug_batch_shape
                     
                     if self.dag.custom_hyperparameters:
@@ -102,11 +104,28 @@ class GaussianProcessNetwork(Model):
                     else:                 
                         # Covariance Module
                         #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=train_X_node_k.size()[1]))
-                        self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
+                        #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, train_Yvar=torch.ones(train_Y_node_k.shape) * self.dag.noise_level, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
                         #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k,covar_module= covar_module, train_Yvar=torch.ones(train_Y_node_k.shape) * 1e-6, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
-                        #self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
+                        self.node_GPs[k] = SingleTaskGP(train_X=train_X_node_k, train_Y=train_Y_node_k, outcome_transform=Standardize(m=1, batch_shape=torch.Size([])))
                         self.node_mlls[k] = ExactMarginalLogLikelihood(self.node_GPs[k].likelihood, self.node_GPs[k])
                         fit_gpytorch_model(self.node_mlls[k])
+                        
+    def get_train_data_node_k(self, k):
+        """
+        Retrives training data for the TS
+
+        """
+        train_X = self.train_X
+        train_Y = self.train_Y
+        aux = train_Y[..., self.dag.get_parent_nodes(k)].clone()
+        for j in range(len(self.dag.get_parent_nodes(k))):
+            self.normalization_constant_lower[k][j] = torch.min(aux[..., j])
+            self.normalization_constant_upper[k][j] = torch.max(aux[..., j])
+            aux[..., j] = (aux[..., j] - self.normalization_constant_lower[k][j])/(self.normalization_constant_upper[k][j] - self.normalization_constant_lower[k][j])
+        train_X_node_k = torch.cat([train_X[..., self.active_input_indices[k]], aux], -1)
+        train_Y_node_k = train_Y[..., [k]]
+        train_Yvar_node_k = torch.ones(train_Y_node_k.shape) * self.noise_var
+        return train_X_node_k, train_Y_node_k, train_Yvar_node_k
                 
     def posterior(self, X: Tensor, posterior_transform=None, observation_noise=False) -> MultivariateNormalNetwork:
         r"""Computes the posterior over model outputs at the provided points.
@@ -168,9 +187,11 @@ class GaussianProcessNetwork(Model):
                 fantasy_models[k] = self.node_GPs[k].condition_on_observations(X_node_k, Y_node_k, noise=torch.ones(Y_node_k.shape[1:]) * 1e-6)
 
         return GaussianProcessNetwork(dag=self.dag, train_X=X, train_Y=Y, active_input_indices=self.active_input_indices, node_GPs=fantasy_models, normalization_constant_lower=self.normalization_constant_lower, normalization_constant_upper=self.normalization_constant_upper)
-        
-    def num_output(self):
-        return self.n_outs
+    
+    @property   
+    def num_outputs(self):
+        a = 1
+        return a #self.n_outs
 
         
 class MultivariateNormalNetwork(Posterior):
@@ -183,7 +204,7 @@ class MultivariateNormalNetwork(Posterior):
         self.active_input_indices = self.dag.active_input_indices
         self.normalization_constant_lower = normalization_constant_lower
         self.normalization_constant_upper = normalization_constant_upper
-        #self.posterior_transform = None
+        self.posterior_transform = self.dag.objective_function
     
     @property
     def mean_sigma(self):
@@ -234,6 +255,8 @@ class MultivariateNormalNetwork(Posterior):
    
     def rsample(self, sample_shape=torch.Size(), base_samples=None):
         #t0 =  time.time()
+        # if self.dag.nw > 0:
+        #     self.active_input_indices = self.dag.design_input_indices
         nodes_samples = torch.empty(sample_shape + self.event_shape)
         nodes_samples = nodes_samples.double()
         nodes_samples_available = [False for k in range(self.n_nodes)]

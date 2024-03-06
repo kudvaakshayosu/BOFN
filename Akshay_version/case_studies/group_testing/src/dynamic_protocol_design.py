@@ -82,7 +82,7 @@ def simple_simulation(group_sizes=[80,90,100,110], prevalence=0.01, resolved=0.,
     return state[0:T], loss
 
 
-def node(state, group_size, costs = {'test' : .001, 'infections' : 1, 'quarantine' : .01}, test_period = None, verbose=False):
+def node(state, group_size, costs = {'test' : .001 , 'infections' : 1, 'quarantine' : .015}, test_period = None, verbose=False):
     # Takes as input:
     #   the state of the system (which is the output from the previous node, or the initial state)
     #   the group size (which is the control to exercise in that period)

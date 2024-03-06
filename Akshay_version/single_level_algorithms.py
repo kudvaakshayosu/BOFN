@@ -117,7 +117,8 @@ def BOFN(x_init: Tensor,
            T: float,
            beta = torch.tensor(2),
            q: int = 1,  # Default batch number is 1
-           acq_type = 'qEI'
+           acq_type = 'qEI', 
+           nominal_mode = False
            ) -> dict:
     """
     Parameters
@@ -255,15 +256,17 @@ def BOFN(x_init: Tensor,
         
         X_new = x_star
         
-        print('Next point to sample', X_new)
-        
-        if input_dim == 1:
-            Y_new = objective(X_new.unsqueeze(0))
-        else:
-            Y_new = objective(copy.deepcopy(X_new))
-        
-        # Append the new values
-        X = torch.vstack([X,X_new])
+        if nominal_mode:
+            return X_new
+        else:       
+            # Append the new values
+            X = torch.vstack([X,X_new])
+            print('Next point to sample', X_new)
+            
+            if input_dim == 1:
+                Y_new = objective(X_new.unsqueeze(0))
+            else:
+                Y_new = objective(copy.deepcopy(X_new))
         Y = torch.vstack([Y,Y_new.squeeze(0)])
     
     output_dict = {'X': X, 'Y': Y, 'Time': time_opt, 'Ninit': Ninit, 'T': T}
