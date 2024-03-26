@@ -9,18 +9,19 @@ This code is used for recommendation of ARBO and or BONSAI
 import pickle 
 import torch
 import matplotlib.pyplot as plt
-from robust_algorithms import BONSAI_Recommendor, BONSAI_Recommendor_final, ARBO_Recommendor_final, BOFN_Recommendor_final
+from robust_algorithms import BONSAI_Recommendor, ARBO_Recommendor_final, BOFN_Recommendor_final, Mean_Recommendor_final
 from ObjectiveFN import function_network_examples
 
 
-function_network, g, nominal_w = function_network_examples('polynomial')
+function_network, g, nominal_w = function_network_examples('robot', algorithm_name= 'Recommendor')
 
 
 recommendor = 'by_iteration_not'
 
-T_val = [5*(i+1) for i in range(19)]
+T_val = [5*(i+1) for i in range(20)]
+#T_val = [100]
 
-with open('BOFN_polynomial.pickle', 'rb') as handle:
+with open('ARBO_robot.pickle', 'rb') as handle:
     data = pickle.load(handle)
 
 BONSAI_recommender_data = {}    
@@ -33,7 +34,7 @@ else:
     # This is for recommending a final set of best design based on all available data
     for i in data:
         for T in T_val:
-            BONSAI_recommender_data[i,T] = BOFN_Recommendor_final(data = data[i], g = g, T = T ) 
+            BONSAI_recommender_data[i,T] = Mean_Recommendor_final(data = data[i], g = g, T = T ) 
     
-# with open('BONSAI_polynomial_recommended.pickle', 'wb') as handle:
+# with open('ARBO_robot_recommended.pickle', 'wb') as handle:
 #     pickle.dump(BONSAI_recommender_data, handle, protocol=pickle.HIGHEST_PROTOCOL)   

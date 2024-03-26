@@ -42,10 +42,11 @@ if __name__ == '__main__':
     - (z[:,1])**6 + 11*(z[:,1])**5 - 43.3*(z[:,1])**4 + 10*(z[:,1]) + 74.8*(z[:,1])**3 - 56.9*(z[:,1])**2
     + 4.1*(z[:,0])*(z[:,1]) + 0.1*((z[:,1])**2)*((z[:,0])**2) - 0.4*((z[:,1])**2)*(z[:,0]) - 0.4*((z[:,0])**2)*(z[:,1]))
 
-
+    def function_network(X: Tensor):
+        return dropwave.evaluate(X=X).sum(dim = -1)
     
     # Sanity check:
     a = function_network(torch.tensor([[0.1, 0.1 ,0.5, torch.pi]]))
-    b = fun(torch.tensor([[0.1 + 0.5 ,0.1]]))
+    b = fun(torch.tensor([[0.1 - 0.5 ,0.1]]))
     
     print(a - b)

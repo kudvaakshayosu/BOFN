@@ -12,7 +12,6 @@ from math import pi
 from botorch.models.model import Model
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
 from torch import Tensor
-from utils import generate_initial_data
 from gp_network_utils import GaussianProcessNetwork
 from botorch.sampling.normal import SobolQMCNormalSampler
 from typing import List, Optional
@@ -308,176 +307,48 @@ class ThompsonSampleFunctionNetwork(AnalyticAcquisitionFunction):
         return objective_at_X
     
 
-class maxmin_ThompsonSampleFunctionNetwork(AnalyticAcquisitionFunction):
-    def __init__(
-        self,
-        model: Model,
-    ) -> None:
-        # we use the AcquisitionFunction constructor, since that of
-        # AnalyticAcquisitionFunction performs some validity checks that we don't want here
-        kwargs = {"model": model}
-        
-        super(AnalyticAcquisitionFunction, self).__init__(**kwargs)
-        
-        self.ts_network = GPNetworkThompsonSampler(model)
-        self.ts_network.create_sample()
-        self.network_to_objective_transform = model.dag.objective_function
-        self.w_combinations = model.dag.w_combinations
-        self.Nw = model.dag.w_num_combinations
-        
-        self.uncertain_indices = model.dag.uncertain_input_indices
-        self.design_indices = model.dag.design_input_indices
-
-    @t_batch_mode_transform(expected_q=1)
-    def forward(self, X: Tensor) -> Tensor:
-        """Evaluate the TS on the candidate set X
-
-        Args:
-            X: A `(b) x d`-dim Tensor of `(b)` t-batches of `d`-dim design
-                points each.
-
-        Returns:
-            A `(b)`-dim Tensor of Upper Confidence Bound values at the given
-                design points `X`.
-        """
-        
-        X_new = X.repeat_interleave(self.Nw,1)
-        X_new[...,self.uncertain_indices] = self.w_combinations        
-        
-        network_at_X = self.ts_network.query_sample(X_new)
-        objective_at_X = self.network_to_objective_transform(network_at_X)
-        
-        objective_at_X = smooth_amin(objective_at_X , dim = -1, tau = 0.5)  
-        
-        
-        if len(objective_at_X.shape) == 2:
-            objective_at_X = objective_at_X.squeeze(-1)
-        elif len(objective_at_X.shape) == 0:
-            objective_at_X = objective_at_X.unsqueeze(0)
-        return objective_at_X
 
 
     
     
 
 if __name__ == "__main__":
-    from single_level_Objective import function_network_examples as SFN
-    from ObjectiveFN import function_network_examples as RFN
-    from fixed_feature import FixedFeatureAcquisitionNetworkFunction
+    from Objective_FN import function_network_examples as SFN
+    
+   
+    function_network, g =  SFN('dropwave')    
+    #Generate initial random data
+    
+    x_init = torch.rand(10, g.nx)
+    y_init = function_network(x_init)    
     
     
-    test_val = True
     
-    if test_val:
+    model = GaussianProcessNetwork(train_X=x_init, train_Y=y_init, dag = g)
+    # Acqusition
+    acquisition_function = ThompsonSampleFunctionNetwork(model)
+    # Sampler
+    qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
+    posterior_mean_function = PosteriorMean(
+        model=model,
+        sampler=qmc_sampler)
     
-        function_network, g =  SFN('dropwave')    
-        x_init, y_init = generate_initial_data(g,function_network, Ninit = 10) 
-        
-        model = GaussianProcessNetwork(train_X=x_init, train_Y=y_init, dag = g)
-        # Acqusition
-        acquisition_function = ThompsonSampleFunctionNetwork(model)
-        # Sampler
-        qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
-        posterior_mean_function = PosteriorMean(
-            model=model,
-            sampler=qmc_sampler)
-        
-        batch_initial_conditions = gen_batch_initial_conditions(
-                acq_function=acquisition_function,
-                bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
-                q=1,
-                num_restarts= 100,
-                raw_samples=1000,
-            )
-    
-        x_star, _ = optimize_acqf(
+    batch_initial_conditions = gen_batch_initial_conditions(
             acq_function=acquisition_function,
-            bounds= torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]),
-            q=1 ,
-            num_restarts=1,
-            raw_samples=100,
-            batch_initial_conditions= batch_initial_conditions,
-            options={"batch_limit": 5},
-        )
-    
-    else:
-        print('Need to test the robust algorithms...')
-        
-        function_network, g, _ =  RFN('synthetic_fun1_discrete')    
-        x_init, y_init = generate_initial_data(g,function_network, Ninit = 100) 
-        
-        model = GaussianProcessNetwork(train_X=x_init, train_Y=y_init, dag = g)
-        
-        # Acqusition
-        acquisition_function = ThompsonSampleFunctionNetwork(model)
-        # Sampler
-        qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
-        
-        posterior_mean_function = PosteriorMean(
-            model=model,
-            sampler=qmc_sampler)
-        
-        batch_initial_conditions = gen_batch_initial_conditions(
-                acq_function=acquisition_function,
-                bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
-                q=1,
-                num_restarts= 100,
-                raw_samples=1000,
-            )
-        
-        acquisition_function2 = FixedFeatureAcquisitionNetworkFunction(model = model,
-                                                                   acq_function= ThompsonSampleFunctionNetwork,
-                                                                   d = 2,
-                                                                   columns =  g.uncertain_input_indices,
-                                                                   values = [g.w_combinations[0]])
-                                                                         
-        
-        
-        
-        x_star, obj_val = optimize_acqf(
-            acq_function= acquisition_function2,
-            bounds= torch.tensor([[0. for i in range(g.nz)], [1. for i in range(g.nz)]]),
-            q=1 ,
-            num_restarts=20,
-            raw_samples=100,
-            options={"batch_limit": 5},   
+            bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
+            q=1,
+            num_restarts= 100,
+            raw_samples=1000,
         )
 
-      
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        # # Acqusition
-        # acquisition_function = ThompsonSampleRobustFunctionNetwork(model)
-        # # Sampler
-        # qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
-        # posterior_mean_function = PosteriorMean(
-        #     model=model,
-        #     sampler=qmc_sampler)
-        
-        # batch_initial_conditions = gen_batch_initial_conditions(
-        #         acq_function=acquisition_function,
-        #         bounds=torch.tensor([[0. for i in range(g.nz)], [1. for i in range(g.nz)]]), 
-        #         q=1,
-        #         num_restarts= 10,
-        #         raw_samples=100,
-        #     )
+    x_star, _ = optimize_acqf(
+        acq_function=acquisition_function,
+        bounds= torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]),
+        q=1 ,
+        num_restarts=1,
+        raw_samples=100,
+        batch_initial_conditions= batch_initial_conditions,
+        options={"batch_limit": 5},
+    )
+
     
-        # x_star, _ = optimize_acqf(
-        #     acq_function=posterior_mean_function,
-        #     bounds= torch.tensor([[0. for i in range(g.nz)], [1. for i in range(g.nz)]]),
-        #     q=1 ,
-        #     num_restarts=1,
-        #     raw_samples=100,
-        #     options={"batch_limit": 5},
-        # )
-
-

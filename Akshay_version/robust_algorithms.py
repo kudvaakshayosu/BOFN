@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 from utils import round_to_nearest_set
 from single_level_algorithms import BOFN
 import sys
-from TSacquisition_functions import ThompsonSampleFunctionNetwork, GPNetworkThompsonSampler
+from TSacquisition_functions import ThompsonSampleFunctionNetwork, GPNetworkThompsonSampler, maxmin_ThompsonSampleFunctionNetwork
 from fixed_feature import FixedFeatureAcquisitionNetworkFunction
 from botorch.models.model import Model
 
@@ -32,68 +32,33 @@ def remove_numbers_from_list_of_lists(numbers_to_remove, list_of_lists):
     return [list(filter(lambda x: x not in numbers_to_remove, sublist)) for sublist in list_of_lists]
 
 
-# Thompson sample bilevel - Only supports ordinal uncertain variables
-def ThompsonSampleFunctionNetworkRobust(model: Model):
-     
-    # Sampler    
-    
-    Y_val = torch.empty(model.dag.w_num_combinations)
-    Z_star = torch.empty(model.dag.w_num_combinations, model.dag.nz)
-    i = 0
-    
-    for w_val in model.dag.w_combinations:
 
-        acquisition_function = FixedFeatureAcquisitionNetworkFunction(model = model,
-                                                                   acq_function= ThompsonSampleFunctionNetwork,
-                                                                   d = model.dag.nx,
-                                                                   columns =  model.dag.uncertain_input_indices,
-                                                                   values = [w_val])                                                                   
-    
-    
-    
-        z_star, obj_val = optimize_acqf(acq_function= acquisition_function,
-                                        bounds= torch.tensor([[0. for i in range(model.dag.nz)], [1. for i in range(model.dag.nz)]]),
-                                        q=1,
-                                        num_restarts=5,
-                                        raw_samples=100,
-                                        options={"batch_limit": 5})
-        
-        Y_val[i] = obj_val
-        Z_star[i] = z_star.squeeze(0)
-        
-        i += 1       
 
-    # Get the max-min:
-    X_new = torch.empty(model.dag.w_num_combinations, model.dag.w_num_combinations, model.dag.nx)
-    # Fix the design and uncertainty values for each of the Z_new for max-min
-    for i in range(model.dag.w_num_combinations):
-        X_new[i,:,model.dag.design_input_indices] = Z_star[i].repeat(model.dag.w_num_combinations, 1)
-        X_new[i,:,model.dag.uncertain_input_indices] = model.dag.w_combinations
+def min_W_TS(model: Model,
+             z_star: Tensor):
     
-        
+    X_new = torch.empty(model.dag.w_num_combinations, model.dag.nx)
+    
+    X_new[...,model.dag.design_input_indices] = z_star.repeat(model.dag.w_num_combinations, 1)
+    X_new[...,model.dag.uncertain_input_indices] = model.dag.w_combinations  
+    
     
     ts_network = GPNetworkThompsonSampler(model)
     ts_network.create_sample()
+    
     Y_new = ts_network.query_sample(X_new)
     
-    # Objective transform
     Y_new = model.dag.objective_function(Y_new)
-    
-    # Inner min
-    Y_min = Y_new.min(dim = 1).values
-    min_idx = Y_new.min(dim = 1).indices # Save for getting w_star
-    
+   
     # Outer-max
-    Y_maxmin = Y_min.max(0).values
-    maxmin_idx = Y_min.max(0).indices
+    Y_maxmin = Y_new.min(0).values
+    maxmin_idx = Y_new.min(0).indices
     
-    Z_final = Z_star[maxmin_idx]
-    w_final = model.dag.w_combinations[min_idx[maxmin_idx]]
+    w_final = model.dag.w_combinations[maxmin_idx]
     
     
-    return Z_final.unsqueeze(0), Y_maxmin, w_final
-
-
+    return w_final.unsqueeze(0), Y_maxmin
+    
 
 
 ###############################################################################
@@ -105,7 +70,6 @@ def BONSAI(x_init: Tensor,
            g: Graph,
            objective: Callable,
            T: float,
-           beta = torch.tensor(2),
            ) -> dict:
     """
     Parameters
@@ -142,25 +106,21 @@ def BONSAI(x_init: Tensor,
     nw = g.nw
     input_dim = g.nx 
     n_nodes = g.n_nodes
-    Ninit = x_init.size()[0] 
+    Ninit = x_init.size()[0]    
+    
     
     # Instantiate requirements
-    bounds_z =torch.tensor([[0]*(nz),[1]*(nz)])
-    bounds_z = bounds_z.type(torch.float)
+    bounds =torch.tensor([[0]*(nz + nw),[1]*(nz + nw)])
+    bounds = bounds.type(torch.float)
     
-    bounds_w =torch.tensor([[0]*(nw + n_nodes),[1]*(nw + n_nodes)])
-    bounds_w = bounds_w.type(torch.float)
-    
+
     time_opt1 = []
-    time_opt2 = []
     
     # Create a vector for collecting training data
     X = copy.deepcopy(x_init)
     Y = copy.deepcopy(y_init)
     
     X_new = torch.empty(input_dim)
-    X_old = torch.empty(input_dim,1)
-    repeat_count = 0
     
     
     for t in range(T):   
@@ -168,73 +128,67 @@ def BONSAI(x_init: Tensor,
         print('Iteration number', t)        
         model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)
         
-        """
-        # Alternating bound acquisitions
-        # 1) max_{z} min_{w} max_{eta} UCB(z,w,eta)
-        ucb_fun = BONSAI_Acquisition(model, beta = beta)        
-        t1 = time.time()
-        z_star, acq_value = optimize_acqf(ucb_fun, bounds_z , q = 1, num_restarts = 10, raw_samples = 50)
-        t2 = time.time()
-        #print("Time taken for max_{z} min_{w} max_{eta} UCB = ", t2 - t1)
-        time_opt1.append(t2 - t1)        
-        """
-        
-        #1) max_{z} min_{w} Graph Thompson
-        t1 = time.time()
-        z_star, acq_val_thomp, _ =  ThompsonSampleFunctionNetworkRobust(model = model)
-        t2 = time.time()
-        time_opt1.append(t2 - t1)        
-        
-        
-        #2) min_{w} min_{eta} LCB(z_star,w,eta)
-        lcb_fun = BONSAI_Acquisition(model, beta = beta, maximize = False, fixed_variable = z_star)       
-        t1 = time.time()
-        w_eta_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 5, raw_samples = 500)
-        
-        print('LCB value is', -1*acq_value)
-        
-        print('w_eat_star',w_eta_star[:,nw:] )
-        # Seperate the discrete values
-        if g.w_combinations is None:
-            w_star = w_eta_star[:,0:nw]
+        if nw == 0:
+            ts_fun = ThompsonSampleFunctionNetwork(model)
+            
+            t1 = time.time()
+           
+            z_star, acq_val = optimize_acqf(ts_fun, bounds, q = 1, num_restarts = 100, raw_samples = 1000)      
+                  
+            
+           # Step 2) min TS(z_star, w))       
+            w_star = 0   
+            
+            t2 = time.time()
+            
+            time_opt1.append(t2 - t1)
+            
+            X_new = z_star           
+            
+            
         else:
-            w_star = round_to_nearest_set(w_eta_star[:,0:nw], g.w_sets)
-        t2 = time.time()
-        #print("Time taken for min_{w} min_{eta} LCB = ", t2 - t1) 
-        time_opt2.append(t2 - t1)
         
-        # Store the new point to sample
-        X_new[..., design_input] = z_star
-        X_new[..., uncertainty_input] = w_star
+            # 1)  Step 1) max min TS(z, w)
+            ts_fun = maxmin_ThompsonSampleFunctionNetwork(model)
+            t1 = time.time()
+           
+            z_star, acq_val = optimize_acqf(ts_fun, bounds, q = 1, num_restarts = 100, raw_samples = 1000)      
+            
+            # Get the values that are important
+            z_star = z_star[..., g.design_input_indices]
+                  
+            
+           # Step 2) min TS(z_star, w))       
+            w_star, acq_val = min_W_TS(model = model, z_star = z_star)       
+            
+            t2 = time.time()
+            #print("Time taken for min_{w} min_{eta} LCB = ", t2 - t1) 
+            
+            time_opt1.append(t2 - t1)
+            
+            # Store the new point to sample
+            X_new[..., design_input] = z_star
+            X_new[..., uncertainty_input] = w_star
+            
+           
+        print('Next point to sample', X_new) 
         
-        print('Next point to sample', X_new)
+        if input_dim == 2:
+            Y_new = objective(X_new.unsqueeze(0))
+        else:
+            Y_new = objective(copy.deepcopy(X_new))
         
-        try:
-            if input_dim == 2:
-                Y_new = objective(X_new.unsqueeze(0))
-            else:
-                Y_new = objective(copy.deepcopy(X_new))
-        except:
-            break
+        print('Objective function here is')
+        print(Y_new)
         
         # Append the new values
-        X = torch.vstack([X,X_new])      
+        X = torch.vstack([X,X_new])
         Y = torch.vstack([Y,Y_new])
-        
-        
-        # There are repetaing values so does not make 
-        if torch.norm(X_new - X_old).detach() < 0.01:
-            repeat_count += 1
-        else:
-            repeat_count = 0
-        
-        if repeat_count == 3:
-            break       
-        
     
-    output_dict = {'X': X, 'Y': Y, 'T1': time_opt1, 'T2': time_opt2, 'Ninit': Ninit, 'T': T}
+    output_dict = {'X': X, 'Y': Y, 'T1': time_opt1, 'Ninit': Ninit, 'T': T}
     
     return output_dict
+
 
 
 def BONSAI_Recommendor(data, # This is a pickle folder 
@@ -265,6 +219,7 @@ def BONSAI_Recommendor(data, # This is a pickle folder
     Y_out = torch.empty(T)
     Z_out = torch.empty(T, g.nz)
     
+    
     for i in range(T):
         model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)       
         Z_test = data['X'][Ninit: Ninit + i + 1,g.design_input_indices]
@@ -291,7 +246,7 @@ def BONSAI_Recommendor(data, # This is a pickle folder
     
     return output_dict
 
-def BONSAI_Recommendor_final(data, # This is a pickle folder 
+def Mean_Recommendor_final(data, # This is a pickle folder 
            g: Graph,
            beta = torch.tensor(2),
            T= None
@@ -325,29 +280,103 @@ def BONSAI_Recommendor_final(data, # This is a pickle folder
     Y_out = torch.empty(1,1)
     Z_out = torch.empty(1, g.nz)
     
-    model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)
-    Z_test = data['X'][Ninit: Ninit + T + 1, g.design_input_indices]
-    Y_test = torch.zeros(Z_test.size()[0])
-
-    #         
-    for j in range(Z_test.size()[0]): 
-        z_star = Z_test[j]
-        lcb_fun = BONSAI_Acquisition(model, beta = beta, maximize = False, fixed_variable = z_star.unsqueeze(0))
-        w_eta_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 100, raw_samples = 2000)
-        Y_test[j] = -1*acq_value
+   
+    
+    
+    
+    if g.nw == 0:
         
-    Y_out = Y_test.max()
-    Z_out = Z_test[Y_test[:Ninit + T + 1].argmax()]
-    
-    print('BONSAI Recommendor suggested best point as', Z_out)
-    print('Robust LCB at this recommendation', Y_out)
-    
-    # Acquisition function values
+        Z_test = data['X'][Ninit: Ninit + T + 1, :nz]
+        Y_test = data['Y'][Ninit: Ninit + T + 1]
+        Y_out_val = g.objective_function(Y_test).values
+        Z_out = Z_test[Y_out_val.argmax()]     
+        Y_out = Y_out_val.max()
+        
+    else:
+        
+        Z_test = data['X'][Ninit: Ninit + T + 1, g.design_input_indices]
+        Y_test = torch.zeros(Z_test.size()[0])
+        model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)        
+        
+        # Mean recommender       
+        for j in range(Z_test.size()[0]): 
+            z_star = Z_test[j]
+            z_star = z_star.repeat(g.w_num_combinations,1)        
+            X = torch.hstack((z_star, g.w_combinations))        
+            posterior = model.posterior(X)
+            mean, _ = posterior.mean_sigma
+            Y_test[j] = mean.min().detach()
+            
+        Y_out = Y_test.max()
+        Z_out = Z_test[Y_test[:Ninit + T + 1].argmax()]
+        
+        print('BONSAI Recommendor suggested best point as', Z_out)
+        print('Robust LCB at this recommendation', Y_out)
+        
+        # Acquisition function values
     output_dict = {'Z':Z_out , 'Y': Y_out}
     
     return output_dict
 
-#################################################################################
+
+
+# def BONSAI_Recommendor_final(data, # This is a pickle folder 
+#            g: Graph,
+#            beta = torch.tensor(2),
+#            T= None
+#            ) -> dict:
+
+#     """
+#     Recommends design variables at the end of each iteration
+#     """
+#     uncertainty_input = g.uncertain_input_indices
+#     design_input = g.design_input_indices   
+#     nz = g.nz
+#     nw = g.nw
+#     input_dim = g.nx 
+#     n_nodes = g.n_nodes
+    
+#     # Instantiate requirements
+    
+#     bounds_w =torch.tensor([[0]*(nw + n_nodes),[1]*(nw + n_nodes)])
+#     bounds_w = bounds_w.type(torch.float)   
+    
+    
+#     Ninit = data['Ninit']
+#     X = data['X']
+#     Y = data['Y']
+    
+#     if T:
+#         print('Pre-defined T value')
+#     else:
+#         T = Y[Ninit:].size()[0]
+    
+#     Y_out = torch.empty(1,1)
+#     Z_out = torch.empty(1, g.nz)
+    
+#     model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)
+#     Z_test = data['X'][Ninit: Ninit + T + 1, g.design_input_indices]
+#     Y_test = torch.zeros(Z_test.size()[0])
+
+#     #         
+#     for j in range(Z_test.size()[0]): 
+#         z_star = Z_test[j]
+#         lcb_fun = BONSAI_Acquisition(model, beta = beta, maximize = False, fixed_variable = z_star.unsqueeze(0))
+#         w_eta_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 100, raw_samples = 2000)
+#         Y_test[j] = -1*acq_value
+        
+#     Y_out = Y_test.max()
+#     Z_out = Z_test[Y_test[:Ninit + T + 1].argmax()]
+    
+#     print('BONSAI Recommendor suggested best point as', Z_out)
+#     print('Robust LCB at this recommendation', Y_out)
+    
+#     # Acquisition function values
+#     output_dict = {'Z':Z_out , 'Y': Y_out}
+    
+#     return output_dict
+
+################################################################################
 ###################   Nominal mode   log EI Network ##############################
 ##################################################################################
 def BOFN_nominal_mode(x_init: Tensor,
@@ -372,9 +401,13 @@ def BOFN_nominal_mode(x_init: Tensor,
     time_opt1 = []
     
     # Manipulate the graph to a nominal version of the problem
-    g_new = copy.deepcopy(g)
-    new_active_input_indices = remove_numbers_from_list_of_lists(g_new.uncertain_input_indices, g_new.active_input_indices)
-    g_new.register_active_input_indices(new_active_input_indices)
+    
+    if not nw == 0:
+        g_new = copy.deepcopy(g)
+        new_active_input_indices = remove_numbers_from_list_of_lists(g_new.uncertain_input_indices, g_new.active_input_indices)
+        g_new.register_active_input_indices(new_active_input_indices)
+    else:
+        g_new = g 
     
     
     # Create a vector for collecting training data
@@ -395,8 +428,12 @@ def BOFN_nominal_mode(x_init: Tensor,
         w_star = nominal_w
         
         # Store the new point to sample
-        X_new[..., design_input] = z_star
-        X_new[..., uncertainty_input] = w_star
+        if nw == 0:
+            X_new = z_star
+        else:
+        
+            X_new[..., design_input] = z_star
+            X_new[..., uncertainty_input] = w_star
         
         print('New point sampled is ', X_new)
         
@@ -513,7 +550,13 @@ def ARBO(x_init: Tensor,
     design_input = g.design_input_indices   
     nz = g.nz
     nw = g.nw
-    input_dim = g.nx 
+    
+    if nw == 0:
+        nw = g.w_combinations.size()[1]
+        uncertainty_input = [i for i in range(nz,nz + nw)]
+        design_input = [i for i in range(nz)]
+    
+    input_dim = nz + nw
     n_nodes = g.n_nodes
     input_index_info = [design_input,uncertainty_input] # Needed for ARBO acquisition function
     w_combinations = g.w_combinations
@@ -540,7 +583,10 @@ def ARBO(x_init: Tensor,
     for t in range(T):     
         print('Iteration number', t) 
         #covar_module = ScaleKernel(MaternKernel(nu=0.5, ard_num_dims=input_dim)) 
-        model = SingleTaskGP(X, g.objective_function(Y).unsqueeze(-1), outcome_transform=Standardize(m=1))
+        try:
+            model = SingleTaskGP(X, g.objective_function(Y).unsqueeze(-1), outcome_transform=Standardize(m=1))
+        except:
+            model = SingleTaskGP(X, g.objective_function(X,Y).unsqueeze(-1), outcome_transform=Standardize(m=1))
         
         
         mlls = ExactMarginalLogLikelihood(model.likelihood, model)
@@ -820,116 +866,146 @@ def ARBONS(x_init: Tensor,
 ########################### BONSAI No Alternating Bounds ######################
 #################################################################################
 
-def BONSAI_NAB(x_init: Tensor,
-           y_init: Tensor, 
-           g: Graph,
-           objective: Callable,
-           T: float,
-           beta = torch.tensor(2),
-           ) -> dict:
-    """
-    Parameters
-    ----------
-    x_init : Tensor
-        Initial values of features
-    y_init : Tensor
-        Initial values of mappings
-    g : Graph
-        Function network graph structure
-    objective : Callable
-        Function network objective function
-    T : float
-        Budget of function Network
-    beta : Tensor, optional
-        The confidence bound parameter. The default is torch.tensor(2)  
 
-    Returns
-    -------
-    output_dict: dict
-        Constains the following data:
-            1) All X values
-            2) All Y values
-            3) Time to compute z_star = max_{z} min_{w} max_{eta} UCB(z,w,eta)
-            4) Time to compute w_star = min_{w} min_{eta} LCB(z_star,w,eta)
-            5) Ninit: Number of initial values
-            6) T: Evaluation budget
 
-    """
-    # Extract meta data from graph
-    uncertainty_input = g.uncertain_input_indices
-    design_input = g.design_input_indices   
-    nz = g.nz
-    nw = g.nw
-    input_dim = g.nx 
-    n_nodes = g.n_nodes
-    Ninit = x_init.size()[0]    
-    
-    
-    # Instantiate requirements
-    bounds_z =torch.tensor([[0]*(nz),[1]*(nz)])
-    bounds_z = bounds_z.type(torch.float)
-    
-    bounds_w =torch.tensor([[0]*(nw),[1]*(nw)])
-    bounds_w = bounds_w.type(torch.float)
-    
-    time_opt1 = []
-    time_opt2 = []
-    
-    # Create a vector for collecting training data
-    X = copy.deepcopy(x_init)
-    Y = copy.deepcopy(y_init)
-    
-    X_new = torch.empty(input_dim)
-    
-    
-    for t in range(T):   
-        
-        print('Iteration number', t)        
-        model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)
-        
-        # Alternating bound acquisitions
-        # 1) max_{z} min_{w} max_{eta} UCB(z,w,eta)
-        ucb_fun = BONSAINAB_Acquisition(model, beta = beta)        
-        t1 = time.time()
-        z_star, acq_value = optimize_acqf(ucb_fun, bounds_z , q = 1, num_restarts = 10, raw_samples = 50)
-        t2 = time.time()
-        #print("Time taken for max_{z} min_{w} max_{eta} UCB = ", t2 - t1)
-        eta_star = ucb_fun.eta_vals.unique(dim = 0)
-        eta_star = eta_star.reshape(-1,eta_star.shape[-1])
 
-        time_opt1.append(t2 - t1)
-        
-        # Switch function
-        t1 = time.time()
-        ucb_fun = BONSAINAB_Acquisition(model, beta = beta, fixed_variable = [z_star, eta_star], find_z_star= False)  
-        
-        w_star, acq_value = optimize_acqf(ucb_fun, bounds_w , q = 1, num_restarts = 10, raw_samples = 50)
-        #Seperate the discrete values
-        if g.w_combinations is None:
-            w_star = w_star
-        else:
-            w_star = round_to_nearest_set(w_star, g.w_sets)
-        t2 = time.time()
-        #print("Time taken for min_{w} min_{eta} LCB = ", t2 - t1) 
-        time_opt2.append(t2 - t1)
-        
-        # Store the new point to sample
-        X_new[..., design_input] = z_star
-        X_new[..., uncertainty_input] = w_star
-        
-        print('Next point to sample', X_new)
-        
-        if input_dim == 2:
-            Y_new = objective(X_new.unsqueeze(0))
-        else:
-            Y_new = objective(copy.deepcopy(X_new))
-        
-        # Append the new values
-        X = torch.vstack([X,X_new])
-        Y = torch.vstack([Y,Y_new])
-    
-    output_dict = {'X': X, 'Y': Y, 'T1': time_opt1, 'T2': time_opt2, 'Ninit': Ninit, 'T': T}
-    
-    return output_dict
+
+
+
 
     
+#def BONSAI(x_init: Tensor,
+#            y_init: Tensor, 
+#            g: Graph,
+#            objective: Callable,
+#            T: float,
+#            beta = torch.tensor(2),
+#            ) -> dict:
+#     """
+#     Parameters
+#     ----------
+#     x_init : Tensor
+#         Initial values of features
+#     y_init : Tensor
+#         Initial values of mappings
+#     g : Graph
+#         Function network graph structure
+#     objective : Callable
+#         Function network objective function
+#     T : float
+#         Budget of function Network
+#     beta : Tensor, optional
+#         The confidence bound parameter. The default is torch.tensor(2)  
+
+#     Returns
+#     -------
+#     output_dict: dict
+#         Constains the following data:
+#             1) All X values
+#             2) All Y values
+#             3) Time to compute z_star = max_{z} min_{w} max_{eta} UCB(z,w,eta)
+#             4) Time to compute w_star = min_{w} min_{eta} LCB(z_star,w,eta)
+#             5) Ninit: Number of initial values
+#             6) T: Evaluation budget
+
+#     """
+#     # Extract meta data from graph
+#     uncertainty_input = g.uncertain_input_indices
+#     design_input = g.design_input_indices   
+#     nz = g.nz
+#     nw = g.nw
+#     input_dim = g.nx 
+#     n_nodes = g.n_nodes
+#     Ninit = x_init.size()[0] 
+    
+#     # Instantiate requirements
+#     bounds_z =torch.tensor([[0]*(nz),[1]*(nz)])
+#     bounds_z = bounds_z.type(torch.float)
+    
+#     bounds_w =torch.tensor([[0]*(nw + n_nodes),[1]*(nw + n_nodes)])
+#     bounds_w = bounds_w.type(torch.float)
+    
+#     time_opt1 = []
+#     time_opt2 = []
+    
+#     # Create a vector for collecting training data
+#     X = copy.deepcopy(x_init)
+#     Y = copy.deepcopy(y_init)
+    
+#     X_new = torch.empty(input_dim)
+#     X_old = torch.empty(input_dim,1)
+#     repeat_count = 0
+    
+    
+#     for t in range(T):   
+        
+#         print('Iteration number', t)        
+#         model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)
+        
+#         """
+#         # Alternating bound acquisitions
+#         # 1) max_{z} min_{w} max_{eta} UCB(z,w,eta)
+#         ucb_fun = BONSAI_Acquisition(model, beta = beta)        
+#         t1 = time.time()
+#         z_star, acq_value = optimize_acqf(ucb_fun, bounds_z , q = 1, num_restarts = 10, raw_samples = 50)
+#         t2 = time.time()
+#         #print("Time taken for max_{z} min_{w} max_{eta} UCB = ", t2 - t1)
+#         time_opt1.append(t2 - t1)        
+#         """
+        
+#         #1) max_{z} min_{w} Graph Thompson
+#         t1 = time.time()
+#         z_star, acq_val_thomp, _ =  ThompsonSampleFunctionNetworkRobust(model = model)
+#         t2 = time.time()
+#         time_opt1.append(t2 - t1)        
+        
+        
+#         #2) min_{w} min_{eta} LCB(z_star,w,eta)
+#         lcb_fun = BONSAI_Acquisition(model, beta = beta, maximize = False, fixed_variable = z_star)       
+#         t1 = time.time()
+#         w_eta_star, acq_value = optimize_acqf(lcb_fun, bounds_w, q = 1, num_restarts = 5, raw_samples = 500)
+        
+#         print('LCB value is', -1*acq_value)
+        
+#         print('w_eat_star',w_eta_star[:,nw:] )
+#         # Seperate the discrete values
+#         if g.w_combinations is None:
+#             w_star = w_eta_star[:,0:nw]
+#         else:
+#             w_star = round_to_nearest_set(w_eta_star[:,0:nw], g.w_sets)
+#         t2 = time.time()
+#         #print("Time taken for min_{w} min_{eta} LCB = ", t2 - t1) 
+#         time_opt2.append(t2 - t1)
+        
+#         # Store the new point to sample
+#         X_new[..., design_input] = z_star
+#         X_new[..., uncertainty_input] = w_star
+        
+#         print('Next point to sample', X_new)
+        
+#         try:
+#             if input_dim == 2:
+#                 Y_new = objective(X_new.unsqueeze(0))
+#             else:
+#                 Y_new = objective(copy.deepcopy(X_new))
+#         except:
+#             break
+        
+#         # Append the new values
+#         X = torch.vstack([X,X_new])      
+#         Y = torch.vstack([Y,Y_new])
+        
+        
+#         # There are repetaing values so does not make 
+#         if torch.norm(X_new - X_old).detach() < 0.01:
+#             repeat_count += 1
+#         else:
+#             repeat_count = 0
+        
+#         if repeat_count == 3:
+#             break       
+        
+    
+#     output_dict = {'X': X, 'Y': Y, 'T1': time_opt1, 'T2': time_opt2, 'Ninit': Ninit, 'T': T}
+    
+#     return output_dict

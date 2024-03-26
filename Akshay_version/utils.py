@@ -78,23 +78,44 @@ def generate_initial_data(g: Graph,
     y_init: Function evaluations at the corresponding x_init values    
     """
 
-    input_dim = g.nx  
+    
+    # Identify the type of problem
+   
+    if g.nw == 0:   
+        if g.w_combinations is not None:      
+            nw = g.w_combinations.size()[1]
+        else:
+            nw = 0
+        if nw == 0:
+            print('This is a single level problem')
+    else:
+        nw = g.nw
+        print('Uncertain variables are continuous')
+     
+    # Generate random initialization of design based on the seed
+    input_dim = g.nz + nw 
     n_outs = g.n_nodes
     
     torch.manual_seed(seed)
     
-    if x_init is None:
+    if x_init is None: # this is if some default designs are already provided
         x_init = torch.rand(Ninit,input_dim)
     
-    if g.w_sets is None:
-        if g.nw == 0:
-            print('This is a single level problem')
+    ##########################################################
+    if g.w_combinations is None:
+        x_init2 = copy.deepcopy(x_init)
+        
+    else: # Use these designs to generate values
+        x_init2 = copy.deepcopy(x_init)    
+        if len(g.uncertain_input_indices) > 0:
+            rounded_vals = round_to_nearest_set(x_init2[...,g.uncertain_input_indices], g.w_sets)
+            x_init[...,g.uncertain_input_indices] = rounded_vals 
         else:
-            print('Uncertain variables are continuous')
-    else:
-        x_init2 = copy.deepcopy(x_init)        
-        rounded_vals = round_to_nearest_set(x_init2[...,g.uncertain_input_indices], g.w_sets)
-        x_init[...,g.uncertain_input_indices] = rounded_vals    
+            uncertain_input_indices = [i for i in range(g.nz,g.nz + nw)]
+            rounded_vals = round_to_nearest_set(x_init2[...,uncertain_input_indices], g.w_sets)
+            x_init[...,uncertain_input_indices] = rounded_vals 
+            
+           
     
     y_init = torch.zeros(Ninit,n_outs)
     

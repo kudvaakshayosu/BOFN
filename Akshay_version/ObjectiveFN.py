@@ -5,20 +5,25 @@ Created on Sun Jan 28 12:38:38 2024
 use a test case for simple network gp
 @author: kudva.7
 """
-
+import sys
+sys.path
+sys.path.append('/home/kudva.7/Desktop/PaulsonLab/BOFN/Akshay_version/case_studies')
 from graph_utils import Graph
 import torch
 from torch import Tensor
+from case_studies.robot_pushing import Robot_push
 from case_studies.covid_simulator import *
 from case_studies.Polynomial_simulation import Polynomial
-from case_studies.group_testing.src.dynamic_protocol_design import simple_simulation
+#from case_studies.group_testing.src.dynamic_protocol_design import simple_simulation
 import copy
+from botorch.utils.safe_math import smooth_amax, smooth_amin
+import matplotlib.pyplot as plt
+
 
 torch.set_default_dtype(torch.double)
 
 
-def function_network_examples(example):
-
+def function_network_examples(example, algorithm_name = 'BONSAI'):
     
         
     if example == 'synthetic_fun1_discrete':
@@ -196,9 +201,130 @@ def function_network_examples(example):
         nominal_w = torch.tensor([[0.0, 0.0]])
         
         #g.figure()
+        
+    elif example == 'robot':
+        """
+        In this example, we have one uncertain variable, namely: 
+            1) object friction
+     """       
+        simulator = Robot_push()
+        input_dim = simulator.input_dim
+        n_nodes = simulator.n_nodes
+
+        def function_network(X: Tensor):
+            if algorithm_name == 'ARBO':
+                X = X[...,[0,1,2]]
+            
+            x_min = torch.tensor([-5.,-5.,1.])
+            x_max = torch.tensor([5.,5.,70.])  
+            val = 0.
+            
+            if X.size()[0] == 1 or X.dim() == 1:  
+                if X.dim() == 1:
+                    X = X.unsqueeze(0)
+                X_scaled = x_min + (x_max - x_min)*X  
+                val = simulator.evaluate(X=X_scaled)
+            else:
+                X_scaled = x_min + (x_max - x_min)*X 
+                Y = torch.empty(X.size()[0], simulator.n_nodes)
+                #print(X_scaled)
+                i = 0
+                for x in X_scaled:  
+                    Y[i] = simulator.evaluate(X=x.unsqueeze(0))
+                    i += 1            
+                val = Y        
+            
+            return val
+        
+        
+        #############################################################
+        # Define the graph for the problem
+        g = Graph(n_nodes) 
+        
+        g.addEdge(0, 2)
+        g.addEdge(0, 3)
+        
+        g.addEdge(1, 2)
+        g.addEdge(1, 3)
+        
+        g.addEdge(2, 5)
+        g.addEdge(2, 4)
+        
+        g.addEdge(3, 4)
+        g.addEdge(3, 5)        
+        
+        ###########################################################
+        # Active input indices
+        active_input_indices = [[0,1,2],[0,1,2],[2],[2],[2],[2]]
+        g.register_active_input_indices(active_input_indices)        
+       
+        
+        ##################################################################
+        # Generate a normal distribution
+        torch.manual_seed(100)
+        mean = torch.tensor([0., 0.])  # Mean of the distribution
+        covariance = torch.tensor([[0.6, - 0.4], [ - 0.4, 0.6]])  # Covariance matrix
+          
+
+        # Create a multivariate normal distribution
+        mv_normal = torch.distributions.MultivariateNormal(mean, covariance)
+        # Create a multivariate normal distribution
+        #mv_normal2 = torch.distributions.MultivariateNormal(mean2, covariance2)
+
+        # Generate random samples from the normal distribution
+        a = torch.tensor([1.5,1.])
+        b = torch.tensor([2.5,5.])
+        
+        box_mean = (a + b)/2
+        samples = mv_normal.sample((20,))
+        samples2 = (a - b)*torch.rand(100,2) + b # Generate samples from rectangle
+        
+        targets = torch.vstack((samples,samples2))
+            
             
 
+        # # Plot the generated samples
+        plt.figure(figsize=(8, 6))
+        plt.scatter(samples[:, 0], samples[:, 1], alpha=0.5)
+        plt.scatter(samples2[:, 0], samples2[:, 1], alpha=0.5, color = 'red')
+
+        plt.title('Two-Dimensional Normal Distribution')
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        plt.grid(True)
+        plt.show()
         
+        
+        # This is for the norm with respect to each point from the uncertain set
+        if algorithm_name == 'BONSAI':
+            objective_function = lambda Y: smooth_amin(-1*torch.sqrt(torch.sum((Y[..., [4,5]].unsqueeze(0) - targets.unsqueeze(1))**2, -1)), dim = 0)
+            g.define_objective(objective_function)
+        #objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - targets.mean(dim = 0))**2, -1))
+        elif algorithm_name == 'BOFN_nominal':
+            objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - (mean + box_mean)/2)**2, -1))
+            g.define_objective(objective_function)
+        
+        # TODO: Define an objective function and update g.w_conbinations
+        elif algorithm_name == 'ARBO':
+            t_min = targets.min(0).values
+            t_max = targets.max(0).values
+            
+            t_vals = (targets - t_min)/(t_max - t_min)
+            
+            g.w_sets = [list(t_vals[:,0].detach().numpy()),list(t_vals[:,1].detach().numpy())]
+            g.w_combinations = t_vals
+            
+            
+            objective_function = lambda X, Y : -1*torch.sqrt(torch.sum((Y[..., [4,5]] - (t_min + X[...,[3,4]]*(t_max - t_min)))**2, -1))
+            g.define_objective(objective_function, type_obj= 'kkk')
+            
+        elif algorithm_name == 'Recommendor':
+            objective_function = lambda Y: torch.min(-1*torch.sqrt(torch.sum((Y[..., [4,5]].unsqueeze(0) - targets.unsqueeze(1))**2, -1)), dim = 0)
+            g.define_objective(objective_function)
+            
+       
+        nominal_w = None
+        #g.figure()   
         
     
     else:
@@ -210,12 +336,12 @@ def function_network_examples(example):
     
 if __name__ == '__main__':
     
-    example_list = ['synthetic_fun1','synthetic_fun1_discrete', 'synthetic_fun2', 'synthetic_fun3', 'covid_testing']
-    example = example_list[1]
+    example_list = ['synthetic_fun1_discrete', 'covid_testing', 'polynomial', 'robot']
+    example = example_list[3]
     
     function_network, g, _ = function_network_examples(example)
     
-    test_rest = False
+    test_rest = True
     
     if test_rest: 
         
@@ -240,7 +366,7 @@ if __name__ == '__main__':
         
         
         # Start the modeling procedure
-        Ninit = 30
+        Ninit = 5
         n_outs = g.n_nodes
         
         
