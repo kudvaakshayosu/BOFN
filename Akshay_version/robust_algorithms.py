@@ -630,6 +630,8 @@ def ARBO(x_init: Tensor,
             Y_new = objective(X_new.unsqueeze(0))
         else:
             Y_new = objective(copy.deepcopy(X_new))
+            
+        print('Value of sample obtained', Y_new)
         
         # Append the new values
         X = torch.vstack([X,X_new])

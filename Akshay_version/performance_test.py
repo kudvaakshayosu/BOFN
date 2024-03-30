@@ -16,7 +16,7 @@ from utils import generate_initial_data
 import copy
 
 example_list = ['synthetic_fun1_discrete', 'covid_testing', 'polynomial', 'robot']
-algorithm_list = ['BONSAI'] #['BONSAI', 'ARBO', 'ARBONS', 'BONSAI_NAB', 'BOFN_nominal']
+algorithm_list = ['BOFN_nominal'] #['BONSAI', 'ARBO', 'ARBONS', 'BONSAI_NAB', 'BOFN_nominal']
 
 
 example = example_list[3]
@@ -71,5 +71,5 @@ for n in range(Nrepeats):
     
 
 
-# with open('ARBO_robot.pickle', 'wb') as handle:
-#     pickle.dump(ARBO_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+# with open('BOFN_robot.pickle', 'wb') as handle:
+#     pickle.dump(BOFN_data, handle, protocol=pickle.HIGHEST_PROTOCOL)

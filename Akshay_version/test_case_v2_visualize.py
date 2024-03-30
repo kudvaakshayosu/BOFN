@@ -16,16 +16,16 @@ plot_covid_sensitivities = False
 if plot_synthetic:
 
     ####################
-    #fun = lambda x: 10/(1+ torch.log(x[:,0] + x[:,1]))
+    # fun = lambda x: 10/(1+ torch.log(x[:,0] + x[:,1]))
     
-    #fun = lambda x: 100*(torch.sin(4.7/(1+ torch.log(x[:,0] + x[:,1]))) + 2*torch.cos(0.5*x[:,1]))
+    fun = lambda x: 100*(torch.sin(4.7/(1+ torch.log(x[:,0] + x[:,1]))) + 2*torch.cos(0.5*x[:,1]))
     
-    fun = lambda z: (-2*(z[:,0])**6 + 12.2*(z[:,0])**5 - 21.2*(z[:,0])**4 - 6.2*(z[:,0]) + 6.4*(z[:,0])**3 + 4.7*(z[:,0])**2 
-    - (z[:,1])**6 + 11*(z[:,1])**5 - 43.3*(z[:,1])**4 + 10*(z[:,1]) + 74.8*(z[:,1])**3 - 56.9*(z[:,1])**2
-    + 4.1*(z[:,0])*(z[:,1]) + 0.1*((z[:,1])**2)*((z[:,0])**2) - 0.4*((z[:,1])**2)*(z[:,0]) - 0.4*((z[:,0])**2)*(z[:,1]))
+    # fun = lambda z: (-2*(z[:,0])**6 + 12.2*(z[:,0])**5 - 21.2*(z[:,0])**4 - 6.2*(z[:,0]) + 6.4*(z[:,0])**3 + 4.7*(z[:,0])**2 
+    # - (z[:,1])**6 + 11*(z[:,1])**5 - 43.3*(z[:,1])**4 + 10*(z[:,1]) + 74.8*(z[:,1])**3 - 56.9*(z[:,1])**2
+    # + 4.1*(z[:,0])*(z[:,1]) + 0.1*((z[:,1])**2)*((z[:,0])**2) - 0.4*((z[:,1])**2)*(z[:,0]) - 0.4*((z[:,0])**2)*(z[:,1]))
     
-    # LB = torch.tensor([4,-1])
-    # UB = torch.tensor([20,1])
+    LB = torch.tensor([4,-1])
+    UB = torch.tensor([20,1])
     ####################
     
     # fun = lambda x: -1*(torch.sin(x[:,0]*x[:,1]) + x[:,1].sqrt()*(x[:,0])**2 - 0.5*x[:,0])
@@ -34,8 +34,8 @@ if plot_synthetic:
     # UB = torch.tensor([2,4])
     
     #######################################
-    LB = torch.tensor([-0.5,-0.5])
-    UB = torch.tensor([3.25,4.25])
+    # LB = torch.tensor([-0.5,-0.5])
+    # UB = torch.tensor([3.25,4.25])
         
         
         
@@ -72,7 +72,7 @@ if plot_synthetic:
     plt.set_cmap("jet")
     contour_plot = ax.contourf(x2,y2,results2)
     fig.colorbar(contour_plot)
-    #plt.vlines(robust_pt, LB[1], UB[1], colors = 'black', linestyles = 'dashed')
+    plt.vlines(robust_pt, LB[1], UB[1], colors = 'black', linestyles = 'dashed')
     
     plt.scatter(xy_best[0], xy_best[1], marker = '*', color = 'white', s = 200)
     

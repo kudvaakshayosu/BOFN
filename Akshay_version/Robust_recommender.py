@@ -21,7 +21,7 @@ recommendor = 'by_iteration_not'
 T_val = [5*(i+1) for i in range(20)]
 #T_val = [100]
 
-with open('ARBO_robot.pickle', 'rb') as handle:
+with open('BONSAI_robot.pickle', 'rb') as handle:
     data = pickle.load(handle)
 
 BONSAI_recommender_data = {}    
@@ -36,5 +36,5 @@ else:
         for T in T_val:
             BONSAI_recommender_data[i,T] = Mean_Recommendor_final(data = data[i], g = g, T = T ) 
     
-# with open('ARBO_robot_recommended.pickle', 'wb') as handle:
+# with open('BONSAI_robot_recommended.pickle', 'wb') as handle:
 #     pickle.dump(BONSAI_recommender_data, handle, protocol=pickle.HIGHEST_PROTOCOL)   

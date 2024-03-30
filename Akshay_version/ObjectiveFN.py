@@ -277,7 +277,7 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
         
         box_mean = (a + b)/2
         samples = mv_normal.sample((20,))
-        samples2 = (a - b)*torch.rand(100,2) + b # Generate samples from rectangle
+        samples2 = (a - b)*torch.rand(300,2) + b # Generate samples from rectangle
         
         targets = torch.vstack((samples,samples2))
             
@@ -301,7 +301,8 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
             g.define_objective(objective_function)
         #objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - targets.mean(dim = 0))**2, -1))
         elif algorithm_name == 'BOFN_nominal':
-            objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - (mean + box_mean)/2)**2, -1))
+            objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - targets.mean(dim = 0))**2, -1))
+            #objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - (mean + box_mean)/2)**2, -1))
             g.define_objective(objective_function)
         
         # TODO: Define an objective function and update g.w_conbinations

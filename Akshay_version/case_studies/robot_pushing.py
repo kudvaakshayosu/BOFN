@@ -18,11 +18,11 @@ class Robot_push:
         self.input_dim = 3
 
     def evaluate(self, X):          
-        return robot_simulate(X)
+        return robot_simulate_v1(X)
 
 
 
-def robot_simulate(X):
+def robot_simulate_v1(X):
     """
     Parameters
     ----------
@@ -60,7 +60,7 @@ def robot_simulate(X):
     oshape, osize, bfriction, hand_shape1, hand_size1 = 'circle', 1, 0.01,'rectangle',(0.3,1)  
       
     # Circular pusher
-    thing,base = make_thing(500, 500, world, oshape, osize, ofriction, odensity, bfriction, (0,0))  
+    thing,base = make_thing(500, 500, world, oshape, osize, ofriction, odensity, bfriction, (-0.5,-2))  
     init_angle = np.arctan(ry/rx)
     robot = end_effector(world, (rx,ry), base, init_angle, hand_shape1, hand_size1)
     ret1 = simu_push(world, thing, robot, base, simu_steps)
@@ -74,6 +74,7 @@ def robot_simulate(X):
     
 
     return ret1
+
 
 
 if __name__ == '__main__':
