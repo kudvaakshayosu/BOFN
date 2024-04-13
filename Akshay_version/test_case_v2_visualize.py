@@ -16,9 +16,9 @@ plot_covid_sensitivities = False
 if plot_synthetic:
 
     ####################
-    # fun = lambda x: 10/(1+ torch.log(x[:,0] + x[:,1]))
+    fun = lambda x: 10/(1+ torch.log(x[:,0] + x[:,1]))
     
-    fun = lambda x: 100*(torch.sin(4.7/(1+ torch.log(x[:,0] + x[:,1]))) + 2*torch.cos(0.5*x[:,1]))
+    #fun = lambda x: 100*(torch.sin(4.7/(1+ torch.log(x[:,0] + x[:,1]))) + 2*torch.cos(0.5*x[:,1]))
     
     # fun = lambda z: (-2*(z[:,0])**6 + 12.2*(z[:,0])**5 - 21.2*(z[:,0])**4 - 6.2*(z[:,0]) + 6.4*(z[:,0])**3 + 4.7*(z[:,0])**2 
     # - (z[:,1])**6 + 11*(z[:,1])**5 - 43.3*(z[:,1])**4 + 10*(z[:,1]) + 74.8*(z[:,1])**3 - 56.9*(z[:,1])**2

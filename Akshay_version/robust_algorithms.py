@@ -21,7 +21,7 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch import fit_gpytorch_model 
 import matplotlib.pyplot as plt
 from utils import round_to_nearest_set
-from single_level_algorithms import BOFN
+from single_level_algorithms import BOFN, BayesOpt
 import sys
 from TSacquisition_functions import ThompsonSampleFunctionNetwork, GPNetworkThompsonSampler, maxmin_ThompsonSampleFunctionNetwork
 from fixed_feature import FixedFeatureAcquisitionNetworkFunction
@@ -302,7 +302,12 @@ def Mean_Recommendor_final(data, # This is a pickle folder
         for j in range(Z_test.size()[0]): 
             z_star = Z_test[j]
             z_star = z_star.repeat(g.w_num_combinations,1)        
-            X = torch.hstack((z_star, g.w_combinations))        
+            N_vals = torch.hstack((z_star, g.w_combinations))   
+            X = torch.empty(N_vals.size())
+            X[..., design_input] = z_star
+            X[..., uncertainty_input] = g.w_combinations
+            
+            
             posterior = model.posterior(X)
             mean, _ = posterior.mean_sigma
             Y_test[j] = mean.min().detach()
@@ -386,6 +391,7 @@ def BOFN_nominal_mode(x_init: Tensor,
            T: float,
            beta = torch.tensor(2),
            acq_fun = 'qlogEI',
+           graph_structure = True,
            nominal_w = None,
            ) -> dict:
     
@@ -406,6 +412,7 @@ def BOFN_nominal_mode(x_init: Tensor,
         g_new = copy.deepcopy(g)
         new_active_input_indices = remove_numbers_from_list_of_lists(g_new.uncertain_input_indices, g_new.active_input_indices)
         g_new.register_active_input_indices(new_active_input_indices)
+        g_new.uncertain_input_indices = []
     else:
         g_new = g 
     
@@ -421,7 +428,18 @@ def BOFN_nominal_mode(x_init: Tensor,
         print('Iteration number', i)
         
         t1 = time.time()
-        z_star = BOFN(X, Y, g_new, objective = None, T = 1, acq_type = acq_fun, nominal_mode = True)
+        if graph_structure:
+            if nw == 0:
+                z_star = BOFN(X, Y, g_new, objective = None, T = 1, acq_type = acq_fun, nominal_mode = True)
+            else:
+                z_star = BOFN(X[...,design_input], Y, g_new, objective = None, T = 1, acq_type = acq_fun, nominal_mode = True)
+                
+        else:
+            if nw == 0:
+                z_star = BayesOpt(X, Y, g_new, objective = None, T = 1, acq_type = acq_fun, nominal_mode = True)
+            else:
+                z_star = BayesOpt(X[...,design_input], Y, g_new, objective = None, T = 1, acq_type = acq_fun, nominal_mode = True)
+            
         t2 = time.time()
         time_opt1.append(t2 - t1)
         
@@ -487,12 +505,20 @@ def BOFN_Recommendor_final(data, # This is a pickle folder
     Y_out = torch.empty(1,1)
     Z_out = torch.empty(1, g.nz)
     
-    model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)
-    Z_test = data['X'][Ninit: Ninit + T + 1, g.design_input_indices]
+    if nw == 0:
+        Z_test = data['X'][Ninit: Ninit + T + 1,:]
+    else:
+        Z_test = data['X'][Ninit: Ninit + T + 1, g.design_input_indices]
+    
     Y_test = g.objective_function(data['Y'][Ninit: Ninit + T + 1])
-        
-    Y_out = Y_test.max()
-    Z_out = Z_test[Y_test.argmax()]
+    
+    try:   
+        Y_out = Y_test.max()
+        Z_out = Z_test[Y_test.argmax()]
+    except:
+        Y_out = Y_test.values.max()
+        Z_out = Z_test[Y_test.values.argmax()]
+    
     
     print('BOFN Recommendor suggested best point as', Z_out)
     print('Robust LCB at this recommendation', Y_out)

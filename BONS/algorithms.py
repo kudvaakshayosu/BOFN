@@ -15,7 +15,7 @@ from gp_network_utils import GaussianProcessNetwork
 import time
 from botorch.optim import optimize_acqf
 import copy
-from botorch.acquisition import qExpectedImprovement, qLogExpectedImprovement, qUpperConfidenceBound
+from botorch.acquisition import qExpectedImprovement, qLogExpectedImprovement, qUpperConfidenceBound, UpperConfidenceBound
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.acquisition.objective import MCAcquisitionObjective
 from botorch.models.model import Model
@@ -69,7 +69,7 @@ def BOFN(x_init: Tensor,
            T: float,
            beta = torch.tensor(2),
            q: int = 1,  # Default batch number is 1
-           acq_type = 'qEI' # 'qUCB', 'qEI', or 'qlogEI'
+           acq_type = 'qEI', # 'qUCB', 'qEI', or 'qlogEI'
            ) -> dict:
     """
     Parameters
@@ -119,7 +119,7 @@ def BOFN(x_init: Tensor,
     X = copy.deepcopy(x_init)
     Y = copy.deepcopy(y_init)
     
-    X_new = torch.empty(input_dim)
+    X_new = torch.empty(q,input_dim)
     
     # Start the BO Loop
     for t in range(T):   
@@ -188,7 +188,7 @@ def BOFN(x_init: Tensor,
                                     model=model,
                                     beta = beta,
                                     sampler=qmc_sampler,
-                                    objective=network_to_objective_transform)
+                                    objective = network_to_objective_transform)
             
             x_star, acq_value = optimize_acqf(
             acq_function=acquisition_function,
@@ -305,7 +305,7 @@ def BONS(x_init: Tensor,
     X = copy.deepcopy(x_init)
     Y = copy.deepcopy(y_init)
     
-    X_new = torch.empty(input_dim)
+    X_new = torch.empty(q,input_dim)
     
     # Start the BO Loop
     for t in range(T):   
@@ -320,23 +320,24 @@ def BONS(x_init: Tensor,
         posterior_mean_function = PosteriorMean(
             model=model,
             sampler=qmc_sampler)
-        
+        '''
         batch_initial_conditions = gen_batch_initial_conditions(
                 acq_function=acquisition_function,
                 bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
-                q=1,
+                q=q,
                 num_restarts= 100,
                 raw_samples=1000,
             )
+        '''
 
         x_star, _ = optimize_acqf(
             acq_function=acquisition_function,
             bounds= torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]),
-            q=1 ,
+            q=q ,
             num_restarts=1,
             raw_samples=100,
-            batch_initial_conditions= batch_initial_conditions,
-            options={"batch_limit": 5},
+            #batch_initial_conditions= batch_initial_conditions,
+            #options={"batch_limit": 5},
         )
 
         # Computation time

@@ -347,7 +347,7 @@ class maxmin_ThompsonSampleFunctionNetwork(AnalyticAcquisitionFunction):
         network_at_X = self.ts_network.query_sample(X_new)
         objective_at_X = self.network_to_objective_transform(network_at_X)
         
-        objective_at_X = smooth_amin(objective_at_X , dim = -1, tau = 0.5)  
+        objective_at_X = smooth_amin(objective_at_X , dim = -1)  
         
         
         if len(objective_at_X.shape) == 2:

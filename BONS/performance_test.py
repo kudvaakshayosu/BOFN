@@ -14,7 +14,7 @@ from algorithms import BOFN, BONS
 examples = ['dropwave', 'toy_problem']
 example = examples[0]
 
-acq_fun = 'qlogEI'
+acq_fun = 'qUCB'
 
 print('Running ' + example)
 
@@ -47,10 +47,10 @@ for n in range(Nrepeats):
     
     
     # print('Running BOFN with ' + acq_fun)
-    # val = BOFN( x_init, y_init, g, objective = function_network, T = T, acq_type = acq_fun)             
+    # val = BOFN( x_init, y_init, g, objective = function_network, T = T, acq_type = acq_fun, q = 3)             
     # BOFN_qlogEI[n] = val
     
-    val = BONS( x_init, y_init, g, objective = function_network, T = T)             
+    val = BONS( x_init, y_init, g, objective = function_network, T = T, q = 3)             
     BONS_val[n] = val 
     
     

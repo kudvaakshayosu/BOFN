@@ -12,8 +12,11 @@ from graph_utils import Graph
 import torch
 from torch import Tensor
 from case_studies.robot_pushing import Robot_push
-from case_studies.covid_simulator import *
+from case_studies.HeatX_simulator import HeatX
+from case_studies.Cliff_simulation import Cliff
+from case_studies.Sine_simulation import Sine
 from case_studies.Polynomial_simulation import Polynomial
+from case_studies.mnist_classification import NN_Classifier, mnist_tester
 #from case_studies.group_testing.src.dynamic_protocol_design import simple_simulation
 import copy
 from botorch.utils.safe_math import smooth_amax, smooth_amin
@@ -78,74 +81,105 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
         g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
         nominal_w = torch.tensor([[0.7]])
     
-
-    elif example == 'covid_testing':
+    elif example == 'cliff':
         """
-        In this example, we have two uncertain variables, namely: 
-            1) the testing period: [12,13,14,15]: Corresponds to [0,0.33,0.66,1]
-            2) The percentage of population infected at t = 0 (prevalence) [0.01,0.012,0.014,0.016,0.018,0.02]: Corresponds to [0,0.2,0.4,0.6,0.8,1]
+        High dimensional cliff function
         """
         
-        n_periods = 3
+        simulator = Cliff()
+        input_dim = simulator.input_dim
+        n_nodes = simulator.n_nodes
         
-        covid_simulator = CovidSimulator(n_periods=n_periods, seed=1)
-        input_dim = covid_simulator.input_dim
-        n_nodes = covid_simulator.n_nodes
-
-        def function_network(X: Tensor) -> Tensor:        
-            # Testing period ranges between 12 and 15 days       
-            X[covid_simulator.n_periods] = 12 + X[covid_simulator.n_periods]*3        
-            # Prevalence uncertainty ranges between 0.5% to 2%
-            X[covid_simulator.n_periods + 1] = 0.01 + X[ covid_simulator.n_periods + 1]*0.01 
+        def function_network(X: Tensor) -> Tensor:  
+            
+            # Rescale things
+            LB = torch.tensor([0.,0.,0.,0.,0.,-torch.pi/2,-torch.pi/2,-torch.pi/2,-torch.pi/2,-torch.pi/2])
+            UB = torch.tensor([5.,5.,5.,5.,5.,torch.pi/2,torch.pi/2,torch.pi/2,torch.pi/2,torch.pi/2])
+            
+            X_scaled = LB + (UB - LB)*X
                 
-            return covid_simulator.evaluate(X)
-        
+            return simulator.evaluate(X_scaled)
         
         #############################################################
         # Define the graph for the problem
         g = Graph(n_nodes)    
         
-        g.addEdge(0, 3)
-        g.addEdge(0, 4)
-        g.addEdge(0, 5)
-        
-        g.addEdge(1, 3)
-        g.addEdge(1, 4)
-        g.addEdge(1, 5)
-        
-        g.addEdge(3, 6)
-        g.addEdge(3, 7)
-        g.addEdge(3, 8)
-        
-        g.addEdge(4, 6)
-        g.addEdge(4, 7)
-        g.addEdge(4, 8)
         
         ###########################################################
         # Active input indices
-        active_input_indices = []
-
-        for t in range(n_periods):
-            for i in range(3):
-                active_input_indices.append([t, n_periods, n_periods + 1])
+        active_input_indices = [[0,5],[1,6],[2,7],[3,8],[4,9]]
+    
+        
         ##############################################################
         g.register_active_input_indices(active_input_indices)
         
-        uncertainty_input = [3,4]
+        uncertainty_input = [5,6,7,8,9]
         g.register_uncertainty_variables(uncertainty_input)
         
         # list of lists
-        w1_set = [[0,0.33,0.66,1],[0.,0.2,0.4,0.6,0.8,1.]] # Needs to be a list of list
+        w1_set = [[0.,0.5,1.],[0.,0.5,1.],[0.,0.5,1.],[0.,0.5,1.],[0.,0.5,1.]] # Needs to be a list of list
         w_discrete_indices = uncertainty_input
         g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
         
-        objective_function = lambda Y: -100 * torch.sum(Y[..., [3*t + 2 for t in range(n_periods)]], dim=-1)
+        objective_function = lambda Y: torch.sum(Y[..., [t for t in range(n_nodes)]], dim=-1)
         
         g.define_objective(objective_function)
         
-        nominal_w = torch.tensor([[0.66, 0.4]])
+        nominal_w = torch.tensor([[0.5, 0.5, 0.5, 0.5 , 0.5]])
         
-        #g.figure()
+    elif example == 'sine':
+        """
+        two dimensional sine function
+        """
+        
+        simulator = Sine()
+        input_dim = simulator.input_dim
+        n_nodes = simulator.n_nodes
+        
+        def function_network(X: Tensor) -> Tensor:  
+            
+            # Rescale things
+            LB = torch.tensor([-1.,-1.,-0.25,-0.25])
+            UB = torch.tensor([1.,1.,0.25,0.25])
+            
+            X_scaled = LB + (UB - LB)*X
+                
+            return simulator.evaluate(X_scaled)
+        
+        #############################################################
+        # Define the graph for the problem
+        g = Graph(n_nodes)  
+        
+        g.addEdge(0, 1)
+        g.addEdge(0, 2)
+        
+        g.addEdge(3, 4)
+        g.addEdge(3, 5)
+        
+        
+        ###########################################################
+        # Active input indices
+        active_input_indices = [[0,2],[],[],[1,3],[],[]]
+    
+        
+        ##############################################################
+        g.register_active_input_indices(active_input_indices)
+        
+        uncertainty_input = [2,3]
+        g.register_uncertainty_variables(uncertainty_input)
+        
+        # list of lists
+        #list_vals = [0.,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.]
+        list_vals = [0.,0.33,0.5,0.66,1.]
+        w1_set = [list_vals,list_vals] # Needs to be a list of list
+        w_discrete_indices = uncertainty_input
+        g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
+        
+        objective_function = lambda Y: torch.sum(Y[..., [1,2,4,5]], dim=-1)
+        
+        g.define_objective(objective_function)
+        
+        nominal_w = torch.tensor([[0.5, 0.5]])
         
     elif example == 'polynomial':
         """
@@ -199,6 +233,59 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
         g.define_objective(objective_function)
         
         nominal_w = torch.tensor([[0.0, 0.0]])
+        
+    elif example == 'HeatX':
+        """
+        In this example, we have one second level variable, namely: 
+            
+        """
+               
+        
+        simulator = HeatX()
+        input_dim = simulator.input_dim
+        n_nodes = simulator.n_nodes
+
+        def function_network(X: Tensor) -> Tensor:   
+            
+            # Design variables
+            rho = 5.
+            LB = torch.tensor([620. - rho,388.- rho,583. - rho,313. - rho, 30.])
+            UB = torch.tensor([620. + rho,388.+ rho,583. + rho,313. + rho, 150.])
+            
+            # Uncertain variables scale
+            X_new =  LB + (UB - LB)*X
+                
+            return simulator.evaluate(X_new)
+        
+        
+        #############################################################
+        # Define the graph for the problem
+        g = Graph(n_nodes)    
+        
+        
+        ###########################################################
+        # Active input indices
+        active_input_indices = [[1,4],[0,1,2,4],[0,1,2,4],[0,1,2,3,4],[0,1,2,3,4]]
+
+        
+        ##############################################################
+        g.register_active_input_indices(active_input_indices)
+        
+        uncertainty_input = [4]
+        g.register_uncertainty_variables(uncertainty_input)
+        
+        # list of lists
+        w1_set = [list(torch.arange(0,1,0.0001).detach().numpy())] # Needs to be a list of list
+        w_discrete_indices = uncertainty_input
+        g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
+        
+        objective_function = lambda Y: smooth_amax(Y, dim=-1)
+        
+        #objective_function = lambda Y: torch.max(Y, dim=-1).values
+        
+        g.define_objective(objective_function)
+        
+        nominal_w = torch.tensor([[0.5]])
         
         #g.figure()
         
@@ -279,20 +366,19 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
         samples = mv_normal.sample((20,))
         samples2 = (a - b)*torch.rand(300,2) + b # Generate samples from rectangle
         
-        targets = torch.vstack((samples,samples2))
-            
+        targets = torch.vstack((samples,samples2))            
             
 
         # # Plot the generated samples
-        plt.figure(figsize=(8, 6))
-        plt.scatter(samples[:, 0], samples[:, 1], alpha=0.5)
-        plt.scatter(samples2[:, 0], samples2[:, 1], alpha=0.5, color = 'red')
+        # plt.figure(figsize=(8, 6))
+        # plt.scatter(samples[:, 0], samples[:, 1], alpha=0.5)
+        # plt.scatter(samples2[:, 0], samples2[:, 1], alpha=0.5, color = 'red')
 
-        plt.title('Two-Dimensional Normal Distribution')
-        plt.xlabel('X')
-        plt.ylabel('Y')
-        plt.grid(True)
-        plt.show()
+        # plt.title('Two-Dimensional Normal Distribution')
+        # plt.xlabel('X')
+        # plt.ylabel('Y')
+        # plt.grid(True)
+        # plt.show()
         
         
         # This is for the norm with respect to each point from the uncertain set
@@ -300,7 +386,7 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
             objective_function = lambda Y: smooth_amin(-1*torch.sqrt(torch.sum((Y[..., [4,5]].unsqueeze(0) - targets.unsqueeze(1))**2, -1)), dim = 0)
             g.define_objective(objective_function)
         #objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - targets.mean(dim = 0))**2, -1))
-        elif algorithm_name == 'BOFN_nominal':
+        elif algorithm_name == 'BOFN' or algorithm_name == 'VBO':
             objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - targets.mean(dim = 0))**2, -1))
             #objective_function = lambda Y: -1*torch.sqrt(torch.sum((Y[..., [4,5]] - (mean + box_mean)/2)**2, -1))
             g.define_objective(objective_function)
@@ -319,13 +405,85 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
             objective_function = lambda X, Y : -1*torch.sqrt(torch.sum((Y[..., [4,5]] - (t_min + X[...,[3,4]]*(t_max - t_min)))**2, -1))
             g.define_objective(objective_function, type_obj= 'kkk')
             
-        elif algorithm_name == 'Recommendor':
+        elif algorithm_name == 'Recommender':
             objective_function = lambda Y: torch.min(-1*torch.sqrt(torch.sum((Y[..., [4,5]].unsqueeze(0) - targets.unsqueeze(1))**2, -1)), dim = 0)
             g.define_objective(objective_function)
             
        
         nominal_w = None
         #g.figure()   
+        
+    elif example == 'classifier':
+        
+        simulator = NN_Classifier()
+        input_dim = simulator.input_dim
+        n_nodes = simulator.n_nodes
+        
+        if algorithm_name == 'BOFN':
+            adversary_attack = False
+        else:
+            adversary_attack = True
+            
+        
+        #############################################################
+        # Define the graph for the problem
+        g = Graph(n_nodes) 
+        
+        
+        ###########################################################
+        # Active input indices
+        active_input_indices = [[0,1,2,3],[0,1,2,4]]
+        g.register_active_input_indices(active_input_indices) 
+        
+        uncertainty_input = [3,4]
+        g.register_uncertainty_variables(uncertainty_input)
+       
+        
+        ##################################################################
+        
+        
+        def function_network(X: Tensor, test_mode = False):
+            
+            # x_min = torch.tensor([1e-3,10.,0., 0.,0.])
+            # x_max = torch.tensor([0.5,50.,5.,1.,1.])  
+            
+            x_min = torch.tensor([1e-4,10.,0., 0.,0.])
+            x_max = torch.tensor([0.1,30.,10.,1.,1.])  
+            
+            
+            if X.size()[0] == 1 or X.dim() == 1:  
+                if X.dim() == 1:
+                    X = X.unsqueeze(0)
+                X_scaled = x_min + (x_max - x_min)*X  
+                val = simulator.evaluate(X=X_scaled, adversary_attack= adversary_attack)
+            else:
+                X_scaled = x_min + (x_max - x_min)*X 
+                Y = torch.empty(X.size()[0], simulator.n_nodes)
+                #print(X_scaled)
+                i = 0
+                if test_mode:
+                    x = X_scaled[0]
+                    Y = mnist_tester(X = x.unsqueeze(0), adversary_attack= adversary_attack)
+                    val = Y
+                    
+                else:              
+                    for x in X_scaled:  
+                        Y[i] = simulator.evaluate(X=x.unsqueeze(0),adversary_attack= adversary_attack)
+                        i += 1            
+                    val = Y                    
+            return val
+        
+        #################################################################
+        
+        w1_set = [[0.,0.33,0.66,1.],[0.,0.33,0.66,1.]] # Needs to be a list of list
+        w_discrete_indices = uncertainty_input
+        g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
+        
+        objective_function = lambda Y: torch.mean(Y, dim=-1)
+        
+        g.define_objective(objective_function)
+        
+        nominal_w = torch.tensor([[0.66,0.33]])   # This value does not really matter in this case study, we are setting no adversarial attack nominal case   
         
     
     else:

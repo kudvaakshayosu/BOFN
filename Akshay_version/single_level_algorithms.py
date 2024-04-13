@@ -284,7 +284,8 @@ def BayesOpt(x_init: Tensor,
            T: float,
            beta = torch.tensor(2),
            q: int = 1,  # Default batch number is 1
-           acq_type = 'qEI'
+           acq_type = 'logEI',
+           nominal_mode = False,
            ) -> dict:
     """
     Parameters
@@ -318,7 +319,10 @@ def BayesOpt(x_init: Tensor,
     input_dim = g.nx 
     n_nodes = g.n_nodes
     Ninit = x_init.size()[0]  
+    
+
     network_to_objective_transform = g.objective_function
+
     
     num_restarts=10*input_dim
     raw_samples=100*input_dim
@@ -393,17 +397,21 @@ def BayesOpt(x_init: Tensor,
         
         print('Next point to sample', X_new)
         
-        if input_dim == 2:
-            Y_new = objective(X_new.unsqueeze(0))
-        else:
-            Y_new = objective(copy.deepcopy(X_new))
+        if nominal_mode:
+            return X_new
         
-        # Append the new values
-        X = torch.vstack([X,X_new])
-        try:
-            Y = torch.vstack([Y,Y_new.squeeze(0)])
-        except:
-            Y = torch.vstack([Y,Y_new.squeeze(-2).squeeze(-1)])
+        else:        
+            if input_dim == 2:
+                Y_new = objective(X_new.unsqueeze(0))
+            else:
+                Y_new = objective(copy.deepcopy(X_new))
+            
+            # Append the new values
+            X = torch.vstack([X,X_new])
+            try:
+                Y = torch.vstack([Y,Y_new.squeeze(0)])
+            except:
+                Y = torch.vstack([Y,Y_new.squeeze(-2).squeeze(-1)])
     
     output_dict = {'X': X, 'Y': Y, 'Time': time_opt, 'Ninit': Ninit, 'T': T}
     

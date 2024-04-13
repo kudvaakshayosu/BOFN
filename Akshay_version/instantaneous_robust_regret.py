@@ -11,14 +11,15 @@ import torch
 import matplotlib.pyplot as plt
 from ObjectiveFN import function_network_examples
 import matplotlib.pyplot as plt
+import time
 
-case_study = ['robot']
+case_study = ['cliff']
 case = case_study[0]
 
 # For plotting the 
 T_val = [5*(i+1) for i in range(20)]
 
-function_network, g, nominal_w = function_network_examples(case)
+function_network, g, nominal_w = function_network_examples(case, algorithm_name= 'Recommendor')
 
 with open('ARBO_'+case+'_recommended.pickle', 'rb') as handle:
     data1 = pickle.load(handle)
@@ -26,40 +27,57 @@ with open('ARBO_'+case+'_recommended.pickle', 'rb') as handle:
 with open('BOFN_'+case+'_recommended.pickle', 'rb') as handle:
     data2 = pickle.load(handle)
     
-
 with open('BONSAI_'+case+'_recommended.pickle', 'rb') as handle:
     data3 = pickle.load(handle)
+    
+with open('Random_'+case+'_recommended.pickle', 'rb') as handle:
+    data4 = pickle.load(handle)
+    
+with open('VBO_'+case+'_recommended.pickle', 'rb') as handle:
+    data5 = pickle.load(handle)
     
 
 data = {}
 data['ARBO'] = data1
 data['BOFN'] = data2
-# data['BONSAI + LCB Recommended'] = data3
 data['BONSAI'] = data3
+data['Random'] = data4
+data['VBO'] = data5
 
 val = {}
 
 
 for algo in data:
     val[algo] = torch.zeros(30,20) # Here 20 represents the steps for iteration 5, 10,... 100
-         
+    print(algo)   
 
     if g.nw != 0:   
         maxmin_val = torch.empty(g.w_combinations.size()[0],1)
         all_vals = 0 
         for i in range(30):
+            print('Repeat Number', i)
             j = 0
             for t in T_val:
+                t1 = time.time()
+                print('Iteration value', t)
                 X_empty = torch.empty(g.w_combinations.size()[0], g.nx)
                 Z_new = data[algo][i,t]['Z'].repeat(g.w_combinations.size()[0],1)
                 
                 X_empty[..., g.design_input_indices] = Z_new
                 X_empty[..., g.uncertain_input_indices] = g.w_combinations
                 
-                all_vals = g.objective_function(function_network(X_empty))
+                if case == 'classifier':
+                    all_vals = g.objective_function(function_network(X_empty, test_mode = True))                    
+                else:                    
+                    all_vals = g.objective_function(function_network(X_empty))
                 
-                val[algo][i,j] = all_vals.min()
+                worst_case = all_vals.min()
+                val[algo][i,j] = worst_case
                 j += 1
+                t2 = time.time()
+                
+                print('worst-case value =', worst_case)
+                print('time for this evaluation',t2 - t1)
     
     else:
        for i in range(30):
@@ -85,7 +103,7 @@ min_val = min(min_val)
 
 # Plot the robust regret:
 
-color = ['blue', 'green','red']
+color = ['blue', 'green','red','black', 'orange']
 j = 0
 
 for algo in data:    
@@ -108,3 +126,7 @@ plt.xlim([5,100])
 plt.legend()
 plt.grid()
 plt.show()    
+
+
+with open(case+'_plot_final.pickle', 'wb') as handle:
+    pickle.dump(val, handle, protocol=pickle.HIGHEST_PROTOCOL)

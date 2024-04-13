@@ -90,7 +90,6 @@ def generate_initial_data(g: Graph,
             print('This is a single level problem')
     else:
         nw = g.nw
-        print('Uncertain variables are continuous')
      
     # Generate random initialization of design based on the seed
     input_dim = g.nz + nw 
@@ -104,6 +103,7 @@ def generate_initial_data(g: Graph,
     ##########################################################
     if g.w_combinations is None:
         x_init2 = copy.deepcopy(x_init)
+        print('Uncertain variables are continuous!')
         
     else: # Use these designs to generate values
         x_init2 = copy.deepcopy(x_init)    

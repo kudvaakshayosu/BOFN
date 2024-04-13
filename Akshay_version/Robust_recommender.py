@@ -13,7 +13,11 @@ from robust_algorithms import BONSAI_Recommendor, ARBO_Recommendor_final, BOFN_R
 from ObjectiveFN import function_network_examples
 
 
-function_network, g, nominal_w = function_network_examples('robot', algorithm_name= 'Recommendor')
+case = 'sine'
+algo_name = 'BONSAI_'
+
+
+function_network, g, nominal_w = function_network_examples(case, algorithm_name= 'Recommender') 
 
 
 recommendor = 'by_iteration_not'
@@ -21,7 +25,7 @@ recommendor = 'by_iteration_not'
 T_val = [5*(i+1) for i in range(20)]
 #T_val = [100]
 
-with open('BONSAI_robot.pickle', 'rb') as handle:
+with open(algo_name+case+'.pickle', 'rb') as handle:
     data = pickle.load(handle)
 
 BONSAI_recommender_data = {}    
@@ -33,8 +37,11 @@ if recommendor == 'by_iteration':
 else:
     # This is for recommending a final set of best design based on all available data
     for i in data:
+        print('##############################################')
+        print('Run No', i)
         for T in T_val:
+            print('T val', T)
             BONSAI_recommender_data[i,T] = Mean_Recommendor_final(data = data[i], g = g, T = T ) 
     
-# with open('BONSAI_robot_recommended.pickle', 'wb') as handle:
-#     pickle.dump(BONSAI_recommender_data, handle, protocol=pickle.HIGHEST_PROTOCOL)   
+with open(algo_name+case+ '_recommended.pickle', 'wb') as handle:
+    pickle.dump(BONSAI_recommender_data, handle, protocol=pickle.HIGHEST_PROTOCOL)   

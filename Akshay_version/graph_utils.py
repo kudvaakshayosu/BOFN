@@ -25,7 +25,10 @@ class Graph:
         ... with extra utilities
     """
     def __init__(self, nodes):
-            self.graph = defaultdict(list) # dictionary containing adjacency List
+            #self.graph = defaultdict(list) # dictionary containing adjacency List
+            self.graph = {}
+            for i in range(nodes):
+                self.graph[i] = []
             self.n_nodes = nodes # No. of vertices
             self.active_input_indices = []
             self.uncertain_input_indices = []
@@ -203,9 +206,9 @@ class Graph:
     @property          
     def nz(self):
         try:
-            nz = max(map(lambda x: x, max(self.active_input_indices))) - len(self.uncertain_input_indices) + 1 # Number of design variables
+            nz = max(list(itertools.chain(*self.active_input_indices))) - len(self.uncertain_input_indices) + 1 # Number of design variables
         except:
-            nz = max(map(lambda x: x, max(self.active_input_indices))) + 1
+            nz = max(list(itertools.chain(*self.active_input_indices))) + 1
         return nz
     
     @property

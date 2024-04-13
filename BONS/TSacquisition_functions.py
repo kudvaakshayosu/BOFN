@@ -286,7 +286,7 @@ class ThompsonSampleFunctionNetwork(AnalyticAcquisitionFunction):
         self.ts_network.create_sample()
         self.network_to_objective_transform = model.dag.objective_function
 
-    @t_batch_mode_transform(expected_q=1)
+    @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
         """Evaluate the TS on the candidate set X
 
@@ -299,12 +299,13 @@ class ThompsonSampleFunctionNetwork(AnalyticAcquisitionFunction):
                 design points `X`.
         """
         network_at_X = self.ts_network.query_sample(X)
-        objective_at_X = self.network_to_objective_transform(network_at_X.squeeze(1))
-        if len(objective_at_X.shape) == 2:
-            objective_at_X = objective_at_X.squeeze(-1)
-        elif len(objective_at_X.shape) == 0:
-            objective_at_X = objective_at_X.unsqueeze(0)
-        return objective_at_X
+        objective_at_X = self.network_to_objective_transform(network_at_X)
+        
+        # if len(objective_at_X.shape) == 2:
+        #objective_at_X = objective_at_X.unsqueeze(-1).squeeze(0)
+        # elif len(objective_at_X.shape) == 0:
+        #     objective_at_X = objective_at_X.unsqueeze(0)
+        return objective_at_X.T
     
 
 
