@@ -16,7 +16,7 @@ from gp_network_utils import GaussianProcessNetwork
 from botorch.sampling.normal import SobolQMCNormalSampler
 from typing import List, Optional
 from botorch.sampling.base import MCSampler
-from botorch.acquisition import AnalyticAcquisitionFunction, MCAcquisitionFunction
+from botorch.acquisition import AnalyticAcquisitionFunction, MCAcquisitionFunction, SampleReducingMCAcquisitionFunction
 from botorch.acquisition.objective import MCAcquisitionObjective
 from botorch.optim import optimize_acqf
 from botorch.optim.initializers import gen_batch_initial_conditions
@@ -301,14 +301,60 @@ class ThompsonSampleFunctionNetwork(AnalyticAcquisitionFunction):
         network_at_X = self.ts_network.query_sample(X)
         #
         objective_at_X = self.network_to_objective_transform(network_at_X)
-        
+         
         if len(objective_at_X.shape) == 2:
-            objective_at_X = objective_at_X.unsqueeze(-1).squeeze(0)
+              objective_at_X = objective_at_X.squeeze(-1)
         elif len(objective_at_X.shape) == 0:
-            objective_at_X = objective_at_X.unsqueeze(0)
-            
-        objective_at_X = network_at_X.swapaxes(1,2)
-        return objective_at_X
+              objective_at_X = objective_at_X.unsqueeze(0)
+        
+        return network_at_X
+
+
+
+
+
+
+class NewTSFunctionNetwork(SampleReducingMCAcquisitionFunction):
+    def __init__(
+        self,
+        model: Model,
+        sampler,
+        objective,
+    ) -> None:
+        
+        super().__init__(
+            model=model,
+            sampler = sampler,
+            objective= objective,
+            )        
+        
+        self.ts_network = GPNetworkThompsonSampler(model)
+        self.ts_network.create_sample()
+    
+    
+    def _sample_forward(self, X: Tensor) -> Tensor:
+        """Evaluate the TS on the candidate set X
+
+        Args:
+            X: A `(b) x d`-dim Tensor of `(b)` t-batches of `d`-dim design
+                points each.
+
+        Returns:
+            A `(b)`-dim Tensor of Upper Confidence Bound values at the given
+                design points `X`.
+        """
+        network_at_X = self.ts_network.query_sample(X)
+        network_at_X = network_at_X.permute(0,2,1)
+        #
+        # objective_at_X = self.network_to_objective_transform(network_at_X)
+         
+        # if len(objective_at_X.shape) == 2:
+        #       objective_at_X = objective_at_X.squeeze(-1)
+        # elif len(objective_at_X.shape) == 0:
+        #       objective_at_X = objective_at_X.unsqueeze(0)        
+        return network_at_X
+
+
     
 
 
@@ -337,21 +383,21 @@ if __name__ == "__main__":
         model=model,
         sampler=qmc_sampler)
     
-    batch_initial_conditions = gen_batch_initial_conditions(
-            acq_function=acquisition_function,
-            bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
-            q=1,
-            num_restarts= 100,
-            raw_samples=1000,
-        )
+    # batch_initial_conditions = gen_batch_initial_conditions(
+    #         acq_function=acquisition_function,
+    #         bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
+    #         q=3,
+    #         num_restarts= 100,
+    #         raw_samples=1000,
+    #     )
 
     x_star, _ = optimize_acqf(
         acq_function=acquisition_function,
         bounds= torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]),
-        q=1 ,
+        q=3 ,
         num_restarts=1,
         raw_samples=100,
-        batch_initial_conditions= batch_initial_conditions,
+        #batch_initial_conditions= batch_initial_conditions,
         options={"batch_limit": 5},
     )
 

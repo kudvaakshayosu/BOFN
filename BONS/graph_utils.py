@@ -11,12 +11,57 @@ import sys
 import torch
 import collections
 import itertools
-from botorch.acquisition.objective import GenericMCObjective
+from botorch.acquisition.objective import GenericMCObjective, PosteriorTransform
 # Compare the sets
 compare = lambda x, y: collections.Counter(x) != collections.Counter(y)
 # Default acquisition function: The output of final node
 default_AF = lambda Y: Y[..., -1]
 
+
+
+
+#############################################################
+
+
+class Test_posterior(PosteriorTransform):
+    r"""An affine posterior transform for scalarizing multi-output posteriors.
+    """
+
+    scalarize: bool = True
+
+    def __init__(self, function_val) -> None:
+        r"""
+        Args:
+            weights: A one-dimensional tensor with `m` elements representing the
+                linear weights on the outputs.
+            offset: An offset to be added to posterior mean.
+        """
+        super().__init__()
+        self.register_buffer("function_val", function_val)
+
+
+    def evaluate(self, Y):
+        r"""Evaluate the transform on a set of outcomes.
+
+        Args:
+            Y: A `batch_shape x q x m`-dim tensor of outcomes.
+
+        Returns:
+            A `batch_shape x q`-dim tensor of transformed outcomes.
+        """
+        return self.function_val(Y)
+
+    def forward(self, X) :
+        r"""Compute the posterior of the affine transformation.
+
+        Args:
+            posterior: A posterior with the same number of outputs as the
+                elements in `self.weights`.
+
+        Returns:
+            A single-output posterior.
+        """
+        return self.function_val(X)
 
 # Class to represent a graph
 class Graph:
@@ -166,7 +211,10 @@ class Graph:
         return self.nz 
     
     
-    def define_objective(self, objective):
+    def define_objective(self, objective, type_algo = "TS"):
+        # if type_algo == "TS":
+        #    self.objective_function =  Test_posterior(objective) 
+        # else:
         self.objective_function = GenericMCObjective(objective)
     
     # TODO: Accomodate for different lengthscales for different nodes: Not a critical requirement as of now

@@ -24,7 +24,7 @@ from botorch.acquisition import MCAcquisitionFunction
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
 from botorch.optim.initializers import gen_batch_initial_conditions
 import sys
-from TSacquisition_functions import ThompsonSampleFunctionNetwork
+from TSacquisition_functions import ThompsonSampleFunctionNetwork, NewTSFunctionNetwork
 
 torch.set_default_dtype(torch.double)
 
@@ -314,12 +314,13 @@ def BONS(x_init: Tensor,
         model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)
         qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
         
-        acquisition_function = ThompsonSampleFunctionNetwork(model)
+        #acquisition_function = ThompsonSampleFunctionNetwork(model)
+        acquisition_function = NewTSFunctionNetwork(model, sampler=qmc_sampler, objective = network_to_objective_transform)
         # Sampler
-        qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
-        posterior_mean_function = PosteriorMean(
-            model=model,
-            sampler=qmc_sampler)
+        # qmc_sampler = SobolQMCNormalSampler(torch.Size([128]))
+        # posterior_mean_function = PosteriorMean(
+        #     model=model,
+        #     sampler=qmc_sampler)
         
         # batch_initial_conditions = gen_batch_initial_conditions(
         #         acq_function=acquisition_function,
