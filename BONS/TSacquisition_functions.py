@@ -299,13 +299,16 @@ class ThompsonSampleFunctionNetwork(AnalyticAcquisitionFunction):
                 design points `X`.
         """
         network_at_X = self.ts_network.query_sample(X)
+        #
         objective_at_X = self.network_to_objective_transform(network_at_X)
         
-        # if len(objective_at_X.shape) == 2:
-        #objective_at_X = objective_at_X.unsqueeze(-1).squeeze(0)
-        # elif len(objective_at_X.shape) == 0:
-        #     objective_at_X = objective_at_X.unsqueeze(0)
-        return objective_at_X.T
+        if len(objective_at_X.shape) == 2:
+            objective_at_X = objective_at_X.unsqueeze(-1).squeeze(0)
+        elif len(objective_at_X.shape) == 0:
+            objective_at_X = objective_at_X.unsqueeze(0)
+            
+        objective_at_X = network_at_X.swapaxes(1,2)
+        return objective_at_X
     
 
 

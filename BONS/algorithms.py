@@ -320,22 +320,22 @@ def BONS(x_init: Tensor,
         posterior_mean_function = PosteriorMean(
             model=model,
             sampler=qmc_sampler)
-        '''
-        batch_initial_conditions = gen_batch_initial_conditions(
-                acq_function=acquisition_function,
-                bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
-                q=q,
-                num_restarts= 100,
-                raw_samples=1000,
-            )
-        '''
+        
+        # batch_initial_conditions = gen_batch_initial_conditions(
+        #         acq_function=acquisition_function,
+        #         bounds=torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]), 
+        #         q=q,
+        #         num_restarts= 100,
+        #         raw_samples=1000,
+        #     )
+
 
         x_star, _ = optimize_acqf(
             acq_function=acquisition_function,
             bounds= torch.tensor([[0. for i in range(g.nx)], [1. for i in range(g.nx)]]),
             q=q ,
-            num_restarts=1,
-            raw_samples=100,
+            num_restarts=2,
+            raw_samples=5,
             #batch_initial_conditions= batch_initial_conditions,
             #options={"batch_limit": 5},
         )
