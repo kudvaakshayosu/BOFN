@@ -70,7 +70,10 @@ class Graph:
         ... with extra utilities
     """
     def __init__(self, nodes):
-            self.graph = defaultdict(list) # dictionary containing adjacency List
+            self.graph = {}
+            for i in range(nodes):
+                self.graph[i] = []
+            #self.graph = defaultdict(list) # dictionary containing adjacency List
             self.n_nodes = nodes # No. of vertices
             self.active_input_indices = []
             self.design_input_indices = []

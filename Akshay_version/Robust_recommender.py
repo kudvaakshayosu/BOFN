@@ -13,8 +13,8 @@ from robust_algorithms import BONSAI_Recommendor, ARBO_Recommendor_final, BOFN_R
 from ObjectiveFN import function_network_examples
 
 
-case = 'sine'
-algo_name = 'BONSAI_'
+case = 'classifier'
+algo_name = 'VBO_'
 
 
 function_network, g, nominal_w = function_network_examples(case, algorithm_name= 'Recommender') 
@@ -41,7 +41,7 @@ else:
         print('Run No', i)
         for T in T_val:
             print('T val', T)
-            BONSAI_recommender_data[i,T] = Mean_Recommendor_final(data = data[i], g = g, T = T ) 
+            BONSAI_recommender_data[i,T] = BOFN_Recommendor_final(data = data[i], g = g, T = T ) 
     
 with open(algo_name+case+ '_recommended.pickle', 'wb') as handle:
     pickle.dump(BONSAI_recommender_data, handle, protocol=pickle.HIGHEST_PROTOCOL)   

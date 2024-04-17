@@ -13,7 +13,7 @@ from ObjectiveFN import function_network_examples
 import matplotlib.pyplot as plt
 import time
 
-case_study = ['cliff']
+case_study = ['classifier']
 case = case_study[0]
 
 # For plotting the 
@@ -39,10 +39,11 @@ with open('VBO_'+case+'_recommended.pickle', 'rb') as handle:
 
 data = {}
 data['ARBO'] = data1
+data['VBO'] = data5
 data['BOFN'] = data2
 data['BONSAI'] = data3
 data['Random'] = data4
-data['VBO'] = data5
+
 
 val = {}
 

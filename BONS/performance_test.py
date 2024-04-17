@@ -14,7 +14,7 @@ from algorithms import BOFN, BONS
 examples = ['dropwave', 'toy_problem']
 example = examples[0]
 
-acq_fun = 'qUCB'
+acq_fun = 'qlogEI'
 
 print('Running ' + example)
 
@@ -29,7 +29,7 @@ n_outs = g.n_nodes
 
 # Start the modeling procedure
 Ninit = 2*input_dim + 1
-T = 10
+T = 100
 
 
 Nrepeats = 1
@@ -46,12 +46,12 @@ for n in range(Nrepeats):
     y_init = function_network(x_init)   
     
     
-    # print('Running BOFN with ' + acq_fun)
-    # val = BOFN( x_init, y_init, g, objective = function_network, T = T, acq_type = acq_fun, q = 3)             
-    # BOFN_qlogEI[n] = val
+    print('Running BOFN with ' + acq_fun)
+    val = BOFN( x_init, y_init, g, objective = function_network, T = T, acq_type = acq_fun, q = 3)             
+    BOFN_qlogEI[n] = val
     
-    val = BONS( x_init, y_init, g, objective = function_network, T = T, q = 3)             
-    BONS_val[n] = val 
+    # val = BONS( x_init, y_init, g, objective = function_network, T = T, q = 3)             
+    # BONS_val[n] = val 
     
     
 

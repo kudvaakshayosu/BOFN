@@ -14,6 +14,7 @@ from torch import Tensor
 from case_studies.robot_pushing import Robot_push
 from case_studies.HeatX_simulator import HeatX
 from case_studies.Cliff_simulation import Cliff
+from case_studies.Rosenbrock_simulation import Rosenbrock
 from case_studies.Sine_simulation import Sine
 from case_studies.Polynomial_simulation import Polynomial
 from case_studies.mnist_classification import NN_Classifier, mnist_tester
@@ -234,6 +235,58 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
         
         nominal_w = torch.tensor([[0.0, 0.0]])
         
+    elif example == 'rosenbrock':
+         """
+         In this example, we have two uncertain variables, namely: 
+             1) r: radius
+             2) theta: angle
+         """
+         
+        
+         
+         simulator = Rosenbrock()
+         input_dim = simulator.input_dim
+         n_nodes = simulator.n_nodes
+
+         def function_network(X: Tensor) -> Tensor:   
+             
+             LB = torch.tensor([-1, 0, -0.1])
+             UB = torch.tensor([2, 2, 0.1])
+             
+             X_scaled = LB + (UB - LB)*X
+                 
+             return simulator.evaluate(X_scaled)
+         
+         
+         #############################################################
+         # Define the graph for the problem
+         g = Graph(n_nodes)  
+         
+         g.addEdge(0, 2)
+         
+         
+         ###########################################################
+         # Active input indices
+         active_input_indices = [[0,2],[0,2],[1]]
+
+         
+         ##############################################################
+         g.register_active_input_indices(active_input_indices)
+         
+         uncertainty_input = [1,2]
+         g.register_uncertainty_variables(uncertainty_input)
+         
+         # list of lists
+         w1_set = w1_set = [list(torch.linspace(0,1,20).detach().numpy()), list(torch.linspace(0,1,3).detach().numpy()) ] # Needs to be a list of list
+         w_discrete_indices = uncertainty_input
+         g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
+         
+         objective_function = lambda Y: -100*Y[...,2] - 1*Y[...,1]
+         
+         g.define_objective(objective_function)
+         
+         nominal_w = torch.tensor([[0.8, 0.5]])
+        
     elif example == 'HeatX':
         """
         In this example, we have one second level variable, namely: 
@@ -279,9 +332,9 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
         w_discrete_indices = uncertainty_input
         g.register_discrete_uncertain_values(vals = w1_set, indices = w_discrete_indices)
         
-        objective_function = lambda Y: smooth_amax(Y, dim=-1)
+        #objective_function = lambda Y: smooth_amax(Y, dim=-1)
         
-        #objective_function = lambda Y: torch.max(Y, dim=-1).values
+        objective_function = lambda Y: torch.max(Y, dim=-1).values
         
         g.define_objective(objective_function)
         
@@ -419,7 +472,7 @@ def function_network_examples(example, algorithm_name = 'BONSAI'):
         input_dim = simulator.input_dim
         n_nodes = simulator.n_nodes
         
-        if algorithm_name == 'BOFN':
+        if algorithm_name == 'BOFN' or algorithm_name == 'VBO':
             adversary_attack = False
         else:
             adversary_attack = True

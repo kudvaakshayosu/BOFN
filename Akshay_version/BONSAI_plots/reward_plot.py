@@ -10,8 +10,8 @@ import pickle
 import torch
 import matplotlib.pyplot as plt
 
-case = ['polynomial', 'robot', 'classifier','cliff', 'HeatX']
-case_study = [case[4]]
+case = ['polynomial', 'robot', 'classifier','cliff', 'HeatX','rosenbrock','sine']
+case_study = [case[6]]
 case = case_study[0]
 
 # For plotting the 
@@ -39,11 +39,24 @@ j = 0
 for algo in val:    
     #val1 = (val[algo] - min_val)/(max_val - min_val)
     val1 = val[algo]
+    
+    if algo == 'BONSAI':
+        color_val = 'green'
+    elif algo == 'BOFN':
+        color_val = 'red'
+    elif algo == 'Random':
+        color_val = 'magenta'
+    elif algo == 'VBO':
+        color_val = 'black'
+    elif algo == 'ARBO':
+        color_val = 'blue'    
+    
+    
     means = [torch.mean(element, dim = 0) for element in val1.T]
     std = [torch.std(element, dim = 0) for element in val1.T]
     
-    plt.plot(T_val,means, label = algo, color = color[j])
-    plt.fill_between(T_val,torch.tensor(means) - 1.96*torch.tensor(std)/torch.sqrt(torch.tensor(30)), torch.tensor(means) + 1.96*torch.tensor(std)/torch.sqrt(torch.tensor(30)), alpha=0.2, color= color[j])
+    plt.plot(T_val,means, label = algo, color = color_val)
+    plt.fill_between(T_val,torch.tensor(means) - 1.96*torch.tensor(std)/torch.sqrt(torch.tensor(30)), torch.tensor(means) + 1.96*torch.tensor(std)/torch.sqrt(torch.tensor(30)), alpha=0.2, color= color_val)
 
     j += 1    
         

@@ -286,7 +286,7 @@ def Mean_Recommendor_final(data, # This is a pickle folder
     
     if g.nw == 0:
         
-        Z_test = data['X'][Ninit: Ninit + T + 1, :nz]
+        Z_test = data['X'][Ninit: Ninit + T + 1, g.design_input_indices]
         Y_test = data['Y'][Ninit: Ninit + T + 1]
         Y_out_val = g.objective_function(Y_test).values
         Z_out = Z_test[Y_out_val.argmax()]     
@@ -296,7 +296,7 @@ def Mean_Recommendor_final(data, # This is a pickle folder
         
         Z_test = data['X'][Ninit: Ninit + T + 1, g.design_input_indices]
         Y_test = torch.zeros(Z_test.size()[0])
-        model = GaussianProcessNetwork(train_X=X, train_Y=Y, dag=g)        
+        model = GaussianProcessNetwork(train_X=X[: Ninit + T + 1,:], train_Y=Y[: Ninit + T + 1,:], dag=g)        
         
         # Mean recommender       
         for j in range(Z_test.size()[0]): 
@@ -310,7 +310,7 @@ def Mean_Recommendor_final(data, # This is a pickle folder
             
             posterior = model.posterior(X)
             mean, _ = posterior.mean_sigma
-            Y_test[j] = mean.min().detach()
+            Y_test[j] = g.objective_function(mean).min().detach()
             
         Y_out = Y_test.max()
         Z_out = Z_test[Y_test[:Ninit + T + 1].argmax()]

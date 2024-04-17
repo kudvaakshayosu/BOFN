@@ -15,11 +15,11 @@ import pickle
 from utils import generate_initial_data
 import copy
 
-example_list = ['synthetic_fun1_discrete', 'covid_testing', 'polynomial', 'robot', 'classifier', 'cliff', 'HeatX', 'sine']
-algorithm_list = ['BOFN'] #['BONSAI', 'ARBO', 'BOFN_nominal', 'Random', 'VBO']
+example_list = ['polynomial', 'robot', 'classifier', 'cliff', 'HeatX', 'sine','rosenbrock']
+algorithm_list = ['VBO'] #['BONSAI', 'ARBO', 'BOFN_nominal', 'Random', 'VBO']
 
 
-example = example_list[7]
+example = example_list[2]
 
 function_network, g, nominal_w = function_network_examples(example, algorithm_name = algorithm_list[0])
 nz = g.nz
