@@ -11,7 +11,7 @@ import torch
 import matplotlib.pyplot as plt
 
 case = ['polynomial', 'robot', 'classifier','cliff', 'HeatX','rosenbrock','sine']
-case_study = [case[6]]
+case_study = [case[2]]
 case = case_study[0]
 
 # For plotting the 
@@ -37,8 +37,8 @@ color = ['blue', 'green','red', 'black', 'magenta']
 j = 0
 
 for algo in val:    
-    #val1 = (val[algo] - min_val)/(max_val - min_val)
-    val1 = val[algo]
+    val1 = (val[algo] - min_val)/(max_val - min_val)
+    #val1 = val[algo]
     
     if algo == 'BONSAI':
         color_val = 'green'
@@ -62,7 +62,7 @@ for algo in val:
         
 plt.xlabel('Iteration,t')
 plt.xticks(T_val)
-plt.ylabel('Instantaneous Robust Reward Percentage')
+plt.ylabel('Instantaneous Robust Reward ')
 plt.title('Performance for ' + case + ' case study')
 plt.xlim([5,100])
 plt.legend()
